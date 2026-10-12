@@ -1,0 +1,9 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Run Flea from this checkout: the release binary and the ui/ directory next to it.
+#   scripts/flea-dev [path]     builds if needed, then opens Flea (on [path] when given)
+set -eu
+root=$(cd "$(dirname "$0")/.." && pwd)
+[ -x "$root/target/release/flea" ] || (cd "$root" && cargo build --release)
+export FLEA_UI="$root/ui" FLEA_BIN="$root/target/release/flea"
+exec "$FLEA_BIN" --gui "$@"
