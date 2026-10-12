@@ -31,3 +31,11 @@ Then:
 ## Why merge
 
 The `cachyos` branch is public. Merging keeps every commit, so a contributor who branched from `cachyos` does not have to rewrite their work.
+
+## Automatic check
+
+`.github/workflows/upstream-check.yml` runs every day at 06:17 UTC. When `thisisgm/flea` has a `vX.Y.Z` tag that `cachyos` does not contain, it opens one issue titled `Merge upstream <tag> into cachyos`. It never merges anything. Close the issue once the tag is merged. GitHub pauses scheduled workflows after 60 days without repository activity; run it by hand from the Actions tab (`Run workflow`) if it goes quiet.
+
+## Tags
+
+Upstream's `Release` workflow runs on every `v*` tag and publishes to the AUR, so it is disabled in this fork. Never push the upstream tags to `origin`. Name our own releases with a different prefix, for example `cachyos-v0.3.9.1`.

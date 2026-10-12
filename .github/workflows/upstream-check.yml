@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Opens an issue when thisisgm/flea publishes a vX.Y.Z tag that the cachyos branch does not contain
+# yet. The merge itself stays by hand, see docs/cachyos/sync-upstream.md.
+name: Upstream release check
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cachyos
+          fetch-depth: 0
+
+      - name: Compare with upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/thisisgm/flea.git
+          git fetch --quiet --tags upstream
+
+          # Release tags only: vX.Y.Z, so a release candidate never raises the alarm.
+          latest=$(git tag --list --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          echo "latest upstream tag: $latest"
+
+          if git merge-base --is-ancestor "$latest" HEAD; then
+            echo "cachyos already contains $latest"
+            exit 0
+          fi
+
+          title="Merge upstream $latest into cachyos"
+          open=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length')
+          if [ "$open" != "0" ]; then
+            echo "an issue for $latest is already open"
+            exit 0
+          fi
+
+          gh issue create --title "$title" --body "Upstream published \`$latest\` and \`cachyos\` does not contain it.
+
+          - Changes: https://github.com/thisisgm/flea/blob/$latest/CHANGELOG.md
+          - Procedure: docs/cachyos/sync-upstream.md
+
+          Read the changelog for entries that touch Omarchy commands or paths (see docs/cachyos/commons-inventory.md), merge the tag, build, and close this issue."
