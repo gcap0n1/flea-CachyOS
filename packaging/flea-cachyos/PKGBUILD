@@ -3,7 +3,8 @@
 # Contributor: GM (upstream Flea, https://github.com/thisisgm/flea)
 
 # Flea for CachyOS: the upstream package() without Omarchy. ui/Commons and ui/Ui are this fork's own
-# directories, so nothing links into /usr/share/omarchy. It provides and conflicts with dolphin, so
+# directories, so nothing links into /usr/share/omarchy. Colours come from Noctalia through
+# packaging/noctalia; each user runs flea-cachyos-setup once. It provides and conflicts with dolphin, so
 # installing it replaces Dolphin in one transaction while cachyos-hypr-noctalia keeps its dependency.
 pkgname=flea-cachyos
 pkgver=0.3.9.r0
@@ -52,6 +53,8 @@ package() {
   install -Dm644 packaging/com.thisisgm.flea.svg -t "$pkgdir/usr/share/icons/hicolor/scalable/apps"
   install -Dm644 LICENSE LICENSE-MIT NOTICE.md -t "$pkgdir/usr/share/licenses/$pkgname"
   install -Dm644 packaging/flea-cachyos/flea-cachyos.hook -t "$pkgdir/usr/share/libalpm/hooks"
+  install -Dm755 scripts/flea-cachyos-setup -t "$pkgdir/usr/bin"
+  install -Dm644 packaging/noctalia/flea-colors.toml packaging/noctalia/flea.toml -t "$pkgdir/usr/share/flea/noctalia"
 
   install -Dm644 ui/qmldir ui/*.qml ui/*.js -t "$pkgdir/usr/share/flea/ui"
   install -Dm644 ui/js/*.js ui/js/*.mjs -t "$pkgdir/usr/share/flea/ui/js"

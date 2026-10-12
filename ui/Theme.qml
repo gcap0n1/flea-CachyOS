@@ -16,7 +16,8 @@ import "js/TextSize.js" as TextSize
 Singleton {
     id: root
 
-    readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/omarchy/current"
+    // flea-CachyOS: Noctalia renders the palette here (packaging/noctalia/flea.toml), not Omarchy.
+    readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/flea-cachyos/current"
 
     // True only once colors.toml parsed to a palette, so a test can tell one from a fallback.
     property bool ready: false

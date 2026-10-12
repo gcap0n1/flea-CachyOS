@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# flea-CachyOS: copy to ~/.config/noctalia/flea.toml (flea-cachyos-setup does it). Noctalia renders
+# Flea's palette from the active theme, and the hook rewrites theme.name, which ui/Theme.qml watches,
+# so Flea recolours live.
+[theme.templates.user.flea]
+input_path = "/usr/share/flea/noctalia/flea-colors.toml"
+pre_hook = "sh -c 'mkdir -p \"${XDG_STATE_HOME:-$HOME/.local/state}/flea-cachyos/current/theme\"'"
+output_path = "$XDG_STATE_HOME/flea-cachyos/current/theme/colors.toml"
+post_hook = "sh -c 'd=\"${XDG_STATE_HOME:-$HOME/.local/state}/flea-cachyos/current\"; mkdir -p \"$d\"; date +%s > \"$d/theme.name\"'"

@@ -1,0 +1,43 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-only
+# The per-user half of flea-cachyos, which pacman cannot do for each home.
+#   flea-cachyos-setup        Noctalia renders Flea's palette, and folders open in Flea
+#   flea-cachyos-setup off    undo both (folders go back to Dolphin when it is installed)
+set -eu
+
+share=/usr/share/flea/noctalia
+noctalia_conf="${XDG_CONFIG_HOME:-$HOME/.config}/noctalia/flea.toml"
+entry=com.thisisgm.flea.desktop
+
+say() { printf 'flea-cachyos-setup: %s\n' "$*"; }
+
+on() {
+  mkdir -p "$(dirname "$noctalia_conf")"
+  cp "$share/flea.toml" "$noctalia_conf.tmp"
+  mv -f "$noctalia_conf.tmp" "$noctalia_conf"
+  say "Noctalia template installed: $noctalia_conf"
+  if command -v noctalia >/dev/null && noctalia msg config-reload >/dev/null 2>&1; then
+    say "Noctalia reloaded; Flea follows its palette from now on"
+  else
+    say "Noctalia is not running; the palette is rendered on its next start"
+  fi
+  xdg-mime default "$entry" inode/directory
+  say "folders open in Flea ($(xdg-mime query default inode/directory))"
+}
+
+off() {
+  rm -f "$noctalia_conf"
+  say "Noctalia template removed"
+  if [ -e /usr/share/applications/org.kde.dolphin.desktop ]; then
+    xdg-mime default org.kde.dolphin.desktop inode/directory
+    say "folders open in Dolphin again"
+  else
+    say "Dolphin is not installed (sudo pacman -S dolphin), so the folder default is left as it is"
+  fi
+}
+
+case "${1:-on}" in
+  on) on ;;
+  off) off ;;
+  *) echo "usage: flea-cachyos-setup [on|off]" >&2; exit 2 ;;
+esac
