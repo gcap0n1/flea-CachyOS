@@ -1,13 +1,15 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-only
 # The per-user half of flea-cachyos, which pacman cannot do for each home.
-#   flea-cachyos-setup        Noctalia renders Flea's palette, and folders open in Flea
-#   flea-cachyos-setup off    undo both (folders go back to Dolphin when it is installed)
+#   flea-cachyos-setup        Noctalia renders Flea's palette, folders open in Flea, and Open/Save
+#                             dialogs go through Flea's portal
+#   flea-cachyos-setup off    undo all three (folders go back to Dolphin when it is installed)
 set -eu
 
 share=/usr/share/flea/noctalia
 noctalia_conf="${XDG_CONFIG_HOME:-$HOME/.config}/noctalia/flea.toml"
 entry=com.thisisgm.flea.desktop
+portal_conf="${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal/portals.conf"
 
 say() { printf 'flea-cachyos-setup: %s\n' "$*"; }
 
@@ -23,9 +25,25 @@ on() {
   fi
   xdg-mime default "$entry" inode/directory
   say "folders open in Flea ($(xdg-mime query default inode/directory))"
+  # flea --picker writes a user portals.conf holding only the FileChooser line. That file overrides the
+  # desktop's own <desktop>-portals.conf, so its default= line is carried over, or screenshots and
+  # screen sharing would lose their backend. The Omarchy key-binding half of flea --picker fails here.
+  flea --picker >/dev/null 2>&1 || true
+  local desktop system line
+  desktop=$(printf '%s' "${XDG_CURRENT_DESKTOP:-}" | cut -d: -f1 | tr '[:upper:]' '[:lower:]')
+  system="/usr/share/xdg-desktop-portal/${desktop}-portals.conf"
+  if [ -f "$portal_conf" ] && ! grep -q '^default=' "$portal_conf" && [ -f "$system" ]; then
+    line=$(grep -m1 '^default=' "$system" || true)
+    [ -n "$line" ] && sed -i "/^\[preferred\]/a $line" "$portal_conf"
+  fi
+  systemctl --user restart xdg-desktop-portal 2>/dev/null || true
+  say "Open/Save dialogs go through Flea ($(grep -m1 FileChooser "$portal_conf" 2>/dev/null))"
 }
 
 off() {
+  flea --picker off >/dev/null 2>&1 || true
+  systemctl --user restart xdg-desktop-portal 2>/dev/null || true
+  say "Open/Save dialogs back to the desktop's own"
   rm -f "$noctalia_conf"
   say "Noctalia template removed"
   if [ -e /usr/share/applications/org.kde.dolphin.desktop ]; then
