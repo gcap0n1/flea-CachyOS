@@ -1,16 +1,24 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// flea-CachyOS: the activity mark crawls along the CachyOS logo's outline instead of the Omarchy
+// spiral. Logo artwork by ptr1337 for CachyOS (GPL); see NOTICE.md.
 import QtQuick
 import QtQuick.Shapes
 
-// The Omarchy spiral as the activity mark: a stroke-dash crawl along the brand path, never a
-// rotation. This and EmptyState's FleaMark are the only two places the spiral appears; rows
-// and menus never draw it, per the icon-language spec.
+// A stroke-dash crawl along the outline of the C, never a rotation. The faint full outline stays
+// underneath so the shape reads even where the dash is not. This and EmptyState's FleaMark are the
+// only two places the logo appears in the window.
 Item {
     id: root
 
     property color color: Theme.color.muted
-    // The mark draws on the same 24 unit grid as every Glyph, scaled to the slot.
-    readonly property real grid: 24
+    // The logo's own viewBox, scaled to the slot.
+    readonly property real grid: 17.921
     readonly property real markScale: Math.min(root.width, root.height) / root.grid
+    readonly property real brandStroke: 0.7
+    // The closed outline is 62.938 logo units, so one dash period is the whole loop and the
+    // animation's loop point is invisible.
+    readonly property real period: 62.938 / root.brandStroke
+    readonly property string outlinePath: "m4.3286 1.9244h8.3458l-2.1127 3.6528h-4.526l-1.8859 3.2605 1.9121 3.306h8.8286l-2.1664 3.7456h-8.5747l-4.1369-7.1525 3.9605-6.8475z"
 
     Shape {
         width: root.grid
@@ -21,19 +29,24 @@ Item {
         transform: Scale { xScale: root.markScale; yScale: root.markScale }
 
         ShapePath {
+            strokeColor: Qt.alpha(root.color, 0.25)
+            fillColor: "transparent"
+            strokeWidth: root.brandStroke
+            joinStyle: ShapePath.MiterJoin
+            PathSvg { path: root.outlinePath }
+        }
+
+        ShapePath {
             id: crawl
             strokeColor: root.color
             fillColor: "transparent"
-            // A brand mark, not a cut glyph: the spiral keeps the brand's 2 and is exempt from Theme.strokeWidth on purpose.
-            strokeWidth: 2
-            capStyle: ShapePath.SquareCap
+            strokeWidth: root.brandStroke
+            capStyle: ShapePath.FlatCap
             joinStyle: ShapePath.MiterJoin
             strokeStyle: ShapePath.DashLine
-            // The spiral's centreline is 114 grid units and dash units are strokeWidth multiples,
-            // so 30+27=57 is exactly one period; the animation walks one period per cycle and the
-            // loop point is therefore invisible.
-            dashPattern: [30, 27]
-            PathSvg { path: "M21 21H3V3h18v14H7V7h10v6h-6" }
+            // A third of the outline lit, two thirds dark.
+            dashPattern: [root.period / 3, root.period * 2 / 3]
+            PathSvg { path: root.outlinePath }
         }
     }
 
@@ -41,7 +54,7 @@ Item {
         target: crawl
         property: "dashOffset"
         from: 0
-        to: -57
+        to: -root.period
         duration: 1600
         loops: Animation.Infinite
         // Item.visible reads effective visibility, so a hidden ancestor stops the crawl too.

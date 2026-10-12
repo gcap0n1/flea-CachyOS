@@ -10,6 +10,10 @@ flea-CachyOS is a fork of [Flea](https://github.com/thisisgm/flea), a keyboard-f
 
 The MIT License allows the upstream code to be distributed inside a GPL-3.0 work. The MIT notice above stays in place, so the upstream copyright is never removed.
 
+## CachyOS logo
+
+The CachyOS logo in `ui/FleaMark.qml`, `ui/Spinner.qml`, `packaging/com.thisisgm.flea.svg` and `docs/images/icon.svg` is the work of ptr1337 for CachyOS, published under the GNU General Public License ([source](https://commons.wikimedia.org/wiki/File:CachyOS_Logo.svg)). It replaces the Omarchy spiral of the upstream mark. The CachyOS name and logo belong to the CachyOS project; this fork is a community port and is not affiliated with or endorsed by CachyOS.
+
 ## Upstream
 
 This fork tracks upstream releases. See [docs/cachyos/sync-upstream.md](docs/cachyos/sync-upstream.md).
