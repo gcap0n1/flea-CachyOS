@@ -12,7 +12,11 @@ The MIT License allows the upstream code to be distributed inside a GPL-3.0 work
 
 ## CachyOS logo
 
-The CachyOS logo in `ui/FleaMark.qml`, `ui/Spinner.qml`, `packaging/com.thisisgm.flea.svg` and `docs/images/icon.svg` is the work of ptr1337 for CachyOS, published under the GNU General Public License ([source](https://commons.wikimedia.org/wiki/File:CachyOS_Logo.svg)). It replaces the Omarchy spiral of the upstream mark. The CachyOS name and logo belong to the CachyOS project; this fork is a community port and is not affiliated with or endorsed by CachyOS.
+The CachyOS logo in `ui/FleaMark.qml`, `ui/Spinner.qml` and `docs/images/icon.svg` is the work of ptr1337 for CachyOS, published under the GNU General Public License ([source](https://commons.wikimedia.org/wiki/File:CachyOS_Logo.svg)). It replaces the Omarchy spiral of the upstream mark. The CachyOS name and logo belong to the CachyOS project; this fork is a community port and is not affiliated with or endorsed by CachyOS.
+
+## Application icon
+
+`packaging/com.thisisgm.flea.svg`, the icon the launcher shows, is `system-file-manager` from KDE's Breeze icon theme, LGPL-3.0-or-later, copied unchanged.
 
 ## Upstream
 

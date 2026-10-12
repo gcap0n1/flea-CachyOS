@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Maintainer: gcap0n1 <guilherme.caponi@gmail.com>
+# Contributor: GM (upstream Flea, https://github.com/thisisgm/flea)
+
+# Flea for CachyOS: the upstream package() without Omarchy. ui/Commons and ui/Ui are this fork's own
+# directories, so nothing links into /usr/share/omarchy. It provides and conflicts with dolphin, so
+# installing it replaces Dolphin in one transaction while cachyos-hypr-noctalia keeps its dependency.
+pkgname=flea-cachyos
+pkgver=0.3.9.r0
+pkgrel=1
+pkgdesc='Fast, keyboard-first file manager: Flea ported to CachyOS, Hyprland and Noctalia'
+arch=('x86_64')
+url='https://github.com/gcap0n1/flea-CachyOS'
+license=('GPL-3.0-only' 'MIT' 'LGPL-3.0-or-later' 'Apache-2.0' 'EPL-2.0' 'BSD-2-Clause')
+depends=('bubblewrap' 'expect' 'gcc-libs' 'glib2' 'glibc' 'gvfs' 'gvfs-afc' 'gvfs-dnssd' 'gvfs-gphoto2' 'gvfs-mtp' 'gvfs-nfs' 'gvfs-smb' 'hicolor-icon-theme' 'kimageformats' 'libheif' 'python' 'python-gobject' 'qt6-multimedia' 'qt6-webengine' 'quickjs-ng' 'quickshell' 'shared-mime-info' 'usbmuxd' 'util-linux' 'wl-clipboard' 'xdg-terminal-exec' 'xdg-utils')
+makedepends=('cargo' 'git')
+optdepends=('libarchive: archive listing and extraction'
+            '7zip: 7z archive support'
+            'imagemagick: image conversion'
+            'tailscale: Taildrop sharing'
+            'ffmpeg: media metadata in the preview column'
+            'ffmpegthumbnailer: video thumbnails'
+            'dropbox-cli: Dropbox share links'
+            'zoxide: frecent folders in the folder jump of the path bar')
+provides=('flea' 'dolphin')
+conflicts=('flea' 'flea-bin' 'flea-git' 'dolphin')
+options=('!debug')
+source=("$pkgname::git+https://github.com/gcap0n1/flea-CachyOS.git#branch=cachyos")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$pkgname"
+  git describe --long --tags --match 'v[0-9]*' | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+}
+
+build() {
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cd "$pkgname"
+  cargo build --release --locked
+}
+
+package() {
+  cd "$pkgname"
+  install -Dm755 "$srcdir/target/release/flea" "$pkgdir/usr/bin/flea"
+  install -Dm755 tools/flea-gio-auth "$pkgdir/usr/lib/flea/flea-gio-auth"
+  install -Dm755 tools/flea-portal "$pkgdir/usr/lib/flea/flea-portal"
+  install -Dm644 packaging/flea.portal -t "$pkgdir/usr/share/xdg-desktop-portal/portals"
+  install -Dm644 packaging/org.freedesktop.impl.portal.desktop.flea.service -t "$pkgdir/usr/share/dbus-1/services"
+  install -Dm755 tools/flea-filemanager1 "$pkgdir/usr/lib/flea/flea-filemanager1"
+  install -Dm644 packaging/com.thisisgm.flea.FileManager1.service -t "$pkgdir/usr/share/dbus-1/services"
+  install -Dm644 packaging/com.thisisgm.flea.desktop -t "$pkgdir/usr/share/applications"
+  install -Dm644 packaging/com.thisisgm.flea.svg -t "$pkgdir/usr/share/icons/hicolor/scalable/apps"
+  install -Dm644 LICENSE LICENSE-MIT NOTICE.md -t "$pkgdir/usr/share/licenses/$pkgname"
+  install -Dm644 packaging/flea-cachyos/flea-cachyos.hook -t "$pkgdir/usr/share/libalpm/hooks"
+
+  install -Dm644 ui/qmldir ui/*.qml ui/*.js -t "$pkgdir/usr/share/flea/ui"
+  install -Dm644 ui/js/*.js ui/js/*.mjs -t "$pkgdir/usr/share/flea/ui/js"
+  install -Dm644 ui/vendor/*.mjs -t "$pkgdir/usr/share/flea/ui/vendor"
+  install -Dm644 ui/vendor/LICENSES/* -t "$pkgdir/usr/share/flea/ui/vendor/LICENSES"
+  install -Dm644 ui/Commons/qmldir ui/Commons/*.qml -t "$pkgdir/usr/share/flea/ui/Commons"
+  install -Dm644 ui/Ui/qmldir ui/Ui/*.qml -t "$pkgdir/usr/share/flea/ui/Ui"
+  install -Dm644 ui/boot/shell.qml ui/boot/picker.qml ui/boot/fleatab.qml ui/boot/tabtearoff.qml -t "$pkgdir/usr/share/flea/ui/boot"
+  ln -s ../Commons "$pkgdir/usr/share/flea/ui/boot/Commons"
+  ln -s ../Ui "$pkgdir/usr/share/flea/ui/boot/Ui"
+}

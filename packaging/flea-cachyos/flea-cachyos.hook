@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# pacman cannot undo what each user set in their own home, so it says how.
+[Trigger]
+Type = Package
+Operation = Remove
+Target = flea-cachyos
+
+[Action]
+Description = Noting how to go back from Flea
+When = PreTransaction
+Exec = /usr/bin/printf %s\n "flea-cachyos: Dolphin is not reinstalled automatically: sudo pacman -S dolphin" "flea-cachyos: folders back to Dolphin: xdg-mime default org.kde.dolphin.desktop inode/directory" "flea-cachyos: if you ran flea --picker, undo it with flea --picker off before removing"
