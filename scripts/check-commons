@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Lists what ui/ asks of our ui/Commons that ui/Commons does not define, and which files import qs.Ui.
+# Upstream writes against Omarchy's own Commons, so a new release can use a member we never wrote.
+#   scripts/check-commons      exit 0 when nothing is missing, 1 otherwise
+import pathlib
+import re
+import sys
+
+root = pathlib.Path(__file__).resolve().parent.parent / "ui"
+commons = root / "Commons"
+
+# Every name a Commons singleton defines, at any depth: properties and functions.
+defined = {}
+# Members that are nested QtObjects (Style.font, Style.spacing): only their second level is ours to check;
+# anything past a colour or a FileView (hsvSaturation, waitForJob) belongs to Qt.
+nested = {}
+for qml in commons.glob("*.qml"):
+    text = qml.read_text(encoding="utf-8")
+    names = set(re.findall(r"\bproperty\s+[\w<>]+\s+(\w+)", text))
+    names |= set(re.findall(r"\bfunction\s+(\w+)\s*\(", text))
+    defined[qml.stem] = names
+    nested[qml.stem] = set(re.findall(r"\bproperty\s+QtObject\s+(\w+)", text))
+
+used = {}
+pattern = re.compile(r"(?<![\w.])(?:Commons\.)?(Style|Color|Util|Border)\.([A-Za-z_]\w*)(?:\.([A-Za-z_]\w*))?")
+for path in list(root.rglob("*.qml")) + list(root.rglob("*.js")):
+    if commons in path.parents or "vendor" in path.parts:
+        continue
+    text = re.sub(r"//.*", "", path.read_text(encoding="utf-8", errors="ignore"))
+    imports_commons = "qs.Commons" in text
+    for match in pattern.finditer(text):
+        singleton, member, sub = match.groups()
+        whole = match.group(0)
+        # A bare Color is QtQuick's own singleton on Qt 6.12; only Commons.Color is ours.
+        if singleton == "Color" and not whole.startswith("Commons."):
+            continue
+        if not imports_commons and not whole.startswith("Commons."):
+            continue
+        if member in ("qml", "js"):
+            continue
+        names = [member] + ([sub] if sub and member in nested.get(singleton, set()) else [])
+        for name in names:
+            if name not in defined.get(singleton, set()):
+                used.setdefault(f"{singleton}.{name}", set()).add(str(path.relative_to(root)))
+
+missing = sorted(used)
+for name in missing:
+    print(f"missing {name}: {', '.join(sorted(used[name]))}")
+
+ui_importers = sorted(str(p.relative_to(root)) for p in root.rglob("*.qml")
+                      if "import qs.Ui" in p.read_text(encoding="utf-8", errors="ignore") and root / "Ui" not in p.parents)
+print("qs.Ui imported by: " + ", ".join(ui_importers))
+
+sys.exit(1 if missing else 0)

@@ -1,56 +1,129 @@
 # SPDX-License-Identifier: GPL-3.0-only
-# Opens an issue when thisisgm/flea publishes a vX.Y.Z tag that the cachyos branch does not contain
-# yet. The merge itself stays by hand, see docs/cachyos/sync-upstream.md.
-name: Upstream release check
+# When thisisgm/flea tags a vX.Y.Z that cachyos lacks, try the merge on a sync/<tag> branch, build,
+# test and check our Commons, then open a pull request with the results. A conflict opens an issue
+# instead. Nothing reaches cachyos without a person merging the pull request; see
+# docs/cachyos/sync-upstream.md.
+name: Upstream release sync
 
 on:
   schedule:
     - cron: '17 6 * * *'
   workflow_dispatch:
+    inputs:
+      base:
+        description: 'Branch or commit to merge into (testing only)'
+        required: false
+        default: 'cachyos'
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
   issues: write
 
 jobs:
-  check:
+  sync:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASE: ${{ inputs.base || 'cachyos' }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: cachyos
+          ref: ${{ inputs.base || 'cachyos' }}
           fetch-depth: 0
 
-      - name: Compare with upstream
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Find the release to merge
+        id: find
         run: |
           set -euo pipefail
           git remote add upstream https://github.com/thisisgm/flea.git
           git fetch --quiet --tags upstream
-
-          # Release tags only: vX.Y.Z, so a release candidate never raises the alarm.
+          # Release tags only: vX.Y.Z, so a release candidate never starts a sync.
           latest=$(git tag --list --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
           echo "latest upstream tag: $latest"
-
+          echo "tag=$latest" >> "$GITHUB_OUTPUT"
           if git merge-base --is-ancestor "$latest" HEAD; then
-            echo "cachyos already contains $latest"
-            exit 0
+            echo "$BASE already contains $latest"; echo "todo=no" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git ls-remote --exit-code --heads origin "sync/$latest" >/dev/null; then
+            echo "sync/$latest already exists"; echo "todo=no" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "todo=yes" >> "$GITHUB_OUTPUT"
+
+      - name: Merge
+        id: merge
+        if: steps.find.outputs.todo == 'yes'
+        run: |
+          set -uo pipefail
+          tag='${{ steps.find.outputs.tag }}'
+          git config user.name "flea-CachyOS sync"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "sync/$tag"
+          if git merge --no-ff --no-commit "$tag"; then
+            # Our workflows stay ours: upstream's Release would publish to the AUR, and the workflow
+            # token may not push changes to .github/workflows anyway.
+            git checkout HEAD -- .github
+            git commit -q -m "Merge upstream $tag into cachyos" -m "Opened by the upstream release sync workflow."
+            echo "clean=yes" >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only --diff-filter=U > "$RUNNER_TEMP/conflicts.txt"
+            git merge --abort
+            echo "clean=no" >> "$GITHUB_OUTPUT"
           fi
 
-          title="Merge upstream $latest into cachyos"
+      - name: Build, test, check Commons
+        id: checks
+        if: steps.merge.outputs.clean == 'yes'
+        run: |
+          set -uo pipefail
+          report="$RUNNER_TEMP/report.md"
+          if cargo build --release --locked > "$RUNNER_TEMP/build.log" 2>&1; then
+            echo "- Build: passed" >> "$report"
+          else
+            echo "- Build: **failed**, last lines below" >> "$report"
+            { echo '```'; tail -n 25 "$RUNNER_TEMP/build.log"; echo '```'; } >> "$report"
+          fi
+          cargo test --release --locked > "$RUNNER_TEMP/test.log" 2>&1
+          echo "- Rust tests: $(grep -E '^test result:' "$RUNNER_TEMP/test.log" | sort -t' ' -k4 -nr | head -n 1 || echo 'no result')" >> "$report"
+          if scripts/check-commons > "$RUNNER_TEMP/commons.log" 2>&1; then
+            echo "- Commons: nothing missing ($(tail -n 1 "$RUNNER_TEMP/commons.log"))" >> "$report"
+          else
+            echo "- Commons: **members missing**, add them to ui/Commons before merging" >> "$report"
+            { echo '```'; cat "$RUNNER_TEMP/commons.log"; echo '```'; } >> "$report"
+          fi
+          cat "$report"
+
+      - name: Open the pull request
+        if: steps.merge.outputs.clean == 'yes'
+        run: |
+          set -euo pipefail
+          tag='${{ steps.find.outputs.tag }}'
+          # The workflow token may not push commits that touch .github/workflows; say so rather than fail quietly.
+          if ! git push origin "sync/$tag" 2> "$RUNNER_TEMP/push.err"; then
+            why=$(tail -n 3 "$RUNNER_TEMP/push.err")
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues" -f title="Merge upstream $tag into cachyos: push refused" \
+              -f body="The merge of \`$tag\` was clean, but the workflow could not push sync/$tag: $why. Merge it by hand (docs/cachyos/sync-upstream.md)." --jq '.html_url'
+            exit 0
+          fi
+          body="Upstream published \`$tag\`. This branch merges it into \`$BASE\`; nothing is merged until a person approves.
+
+          $(cat "$RUNNER_TEMP/report.md")
+
+          Before merging: read https://github.com/thisisgm/flea/blob/$tag/CHANGELOG.md for Omarchy commands or paths, compare upstream's packaging/flea/PKGBUILD with ours, and run ./tests/js.sh and a real launch locally (docs/cachyos/sync-upstream.md)."
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" -f title="Merge upstream $tag into cachyos" -f head="sync/$tag" -f base="$BASE" -f body="$body" --jq '.html_url'
+
+      - name: Report a conflict
+        if: steps.merge.outputs.clean == 'no'
+        run: |
+          set -euo pipefail
+          tag='${{ steps.find.outputs.tag }}'
+          title="Merge upstream $tag into cachyos: conflicts"
           open=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length')
-          if [ "$open" != "0" ]; then
-            echo "an issue for $latest is already open"
-            exit 0
-          fi
+          [ "$open" != "0" ] && { echo "already reported"; exit 0; }
+          body="Upstream published \`$tag\`, and merging it into \`$BASE\` conflicts in:
 
-          body="Upstream published \`$latest\` and \`cachyos\` does not contain it.
+          $(sed 's/^/- /' "$RUNNER_TEMP/conflicts.txt")
 
-          - Changes: https://github.com/thisisgm/flea/blob/$latest/CHANGELOG.md
-          - Procedure: docs/cachyos/sync-upstream.md
-
-          Read the changelog for entries that touch Omarchy commands or paths (see docs/cachyos/commons-inventory.md), merge the tag, build, and close this issue."
-          # The REST endpoint: gh issue create goes through GraphQL, which the workflow token was refused.
+          Merge it by hand following docs/cachyos/sync-upstream.md, then close this issue."
           gh api --method POST "repos/${GITHUB_REPOSITORY}/issues" -f title="$title" -f body="$body" --jq '.html_url'
