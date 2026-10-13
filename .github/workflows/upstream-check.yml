@@ -76,7 +76,8 @@ jobs:
         id: checks
         if: steps.merge.outputs.clean == 'yes'
         run: |
-          set -uo pipefail
+          # A failing build or test is a result for the report, not a reason to stop: GitHub runs bash -e.
+          set +e
           report="$RUNNER_TEMP/report.md"
           if cargo build --release --locked > "$RUNNER_TEMP/build.log" 2>&1; then
             echo "- Build: passed" >> "$report"
@@ -86,6 +87,10 @@ jobs:
           fi
           cargo test --release --locked > "$RUNNER_TEMP/test.log" 2>&1
           echo "- Rust tests: $(grep -E '^test result:' "$RUNNER_TEMP/test.log" | sort -t' ' -k4 -nr | head -n 1 || echo 'no result')" >> "$report"
+          if grep -qE '^test .* FAILED$' "$RUNNER_TEMP/test.log"; then
+            echo "  Failed on the runner (some tests need a desktop session or tools a CI machine lacks):" >> "$report"
+            grep -E '^test .* FAILED$' "$RUNNER_TEMP/test.log" | sed 's/^test /  - /; s/ \.\.\. FAILED$//' | head -n 30 >> "$report"
+          fi
           if scripts/check-commons > "$RUNNER_TEMP/commons.log" 2>&1; then
             echo "- Commons: nothing missing ($(tail -n 1 "$RUNNER_TEMP/commons.log"))" >> "$report"
           else
