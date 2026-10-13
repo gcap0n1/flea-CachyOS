@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Builds flea-cachyos from cachyos, signs it, and publishes it to the pacman repository held in this
+# fork's "repo" release, so `pacman -Syu` updates Flea. Setup and pacman.conf lines:
+# docs/cachyos/repository.md.
+name: Package repository
+
+on:
+  push:
+    branches: [cachyos]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: package-repository
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO_NAME: flea-cachyos
+    steps:
+      - name: Tools
+        run: |
+          pacman -Syu --noconfirm --needed git cargo github-cli
+          useradd -m builder
+
+      - name: Signing key present
+        env:
+          KEY: ${{ secrets.PKG_SIGNING_KEY }}
+          FPR: ${{ secrets.PKG_SIGNING_FPR }}
+        run: |
+          if [ -z "$KEY" ] || [ -z "$FPR" ]; then
+            echo "::error::Set the PKG_SIGNING_KEY and PKG_SIGNING_FPR secrets (docs/cachyos/repository.md)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: cachyos
+
+      - name: Build
+        run: |
+          install -d -o builder /home/builder/pkg
+          install -m644 -o builder packaging/flea-cachyos/PKGBUILD /home/builder/pkg/
+          # makepkg refuses root. --nodeps: runtime depends are not needed to build, only cargo and git.
+          su builder -c 'cd ~/pkg && makepkg -f --nodeps --noconfirm'
+
+      - name: Sign and publish
+        env:
+          KEY: ${{ secrets.PKG_SIGNING_KEY }}
+          FPR: ${{ secrets.PKG_SIGNING_FPR }}
+        run: |
+          set -euo pipefail
+          export GNUPGHOME="$(mktemp -d)"
+          printf '%s\n' "$KEY" | gpg --batch --quiet --import
+          cd /home/builder/pkg
+          pkg=$(ls flea-cachyos-*.pkg.tar.zst)
+          gpg --batch --yes --detach-sign --local-user "$FPR" "$pkg"
+
+          if ! gh release view repo -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create repo -R "$GITHUB_REPOSITORY" --latest=false --title "pacman repository" \
+              --notes "The flea-cachyos pacman repository. Setup: docs/cachyos/repository.md. Updated by .github/workflows/package.yml."
+          fi
+          # Start from the published database, so the repository keeps its history of entries.
+          gh release download repo -R "$GITHUB_REPOSITORY" -p "$REPO_NAME.db.tar.zst" -p "$REPO_NAME.files.tar.zst" || true
+          repo-add --sign --key "$FPR" "$REPO_NAME.db.tar.zst" "$pkg"
+          # pacman asks for <repo>.db and <repo>.files; a release asset cannot be a symlink, so copy.
+          for kind in db files; do
+            cp -f "$REPO_NAME.$kind.tar.zst" "$REPO_NAME.$kind"
+            cp -f "$REPO_NAME.$kind.tar.zst.sig" "$REPO_NAME.$kind.sig"
+          done
+
+          old=$(gh release view repo -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
+                | grep -E '^flea-cachyos-.*\.pkg\.tar\.zst(\.sig)?$' | grep -vxF -e "$pkg" -e "$pkg.sig" || true)
+          gh release upload repo -R "$GITHUB_REPOSITORY" --clobber "$pkg" "$pkg.sig" \
+            "$REPO_NAME.db" "$REPO_NAME.db.sig" "$REPO_NAME.db.tar.zst" "$REPO_NAME.db.tar.zst.sig" \
+            "$REPO_NAME.files" "$REPO_NAME.files.sig" "$REPO_NAME.files.tar.zst" "$REPO_NAME.files.tar.zst.sig"
+          # Only the newest package stays; the database no longer names the older ones.
+          for asset in $old; do
+            gh release delete-asset repo "$asset" -R "$GITHUB_REPOSITORY" -y
+          done
+          echo "published $pkg"
