@@ -92,6 +92,6 @@ function caption(base) {
 function announce(stored, omarchyBase) {
     var px = effective(stored, omarchyBase) + "px"
     return following(stored)
-        ? "Text size follows Omarchy, " + px + "."
-        : "Text size " + px + ". Ctrl+Shift+0 follows Omarchy again."
+        ? "Text size follows the system, " + px + "."
+        : "Text size " + px + ". Ctrl+Shift+0 follows the system again."
 }

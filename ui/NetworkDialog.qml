@@ -263,10 +263,11 @@ Item {
         dropboxCheck.running = true
     }
 
-    // omarchy-launch-terminal runs its argv directly in a real terminal, so the sudo prompt
-    // omarchy-pkg-add may need and the install's own progress are both visible to the user.
+    // flea-CachyOS: Dropbox is in the AUR, so the install runs yay or paru in a real terminal, where
+    // the sudo prompt and the build's progress are both visible to the user.
     function installDropbox() {
-        Quickshell.execDetached(["omarchy-launch-terminal", "omarchy", "install", "service", "dropbox"])
+        Quickshell.execDetached(["xdg-terminal-exec", "sh", "-c",
+            "if command -v yay >/dev/null; then yay -S dropbox dropbox-cli; elif command -v paru >/dev/null; then paru -S dropbox dropbox-cli; else echo 'Install dropbox and dropbox-cli from the AUR.'; fi; printf '\\nPress Enter to close'; read -r _"])
         root.close()
     }
 

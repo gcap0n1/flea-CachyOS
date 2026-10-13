@@ -9,8 +9,8 @@ pub const AVAILABLE: i32 = 0;
 pub const FAILED: i32 = 2;
 pub const NOTHING_TO_INSTALL: i32 = 3;
 
-// Omarchy's own menu command for its updater, handed over as a fixed argv and never through a shell.
-const UPDATER: &str = "omarchy-update";
+// flea-CachyOS: the system update, run by sh inside xdg-terminal-exec (see launch below).
+const UPDATER: &str = "if command -v yay >/dev/null; then yay -Syu; elif command -v paru >/dev/null; then paru -Syu; else sudo pacman -Syu; fi; printf '\\nPress Enter to close'; read -r _";
 
 // The three names Flea is packaged under: OPR's, the AUR release binary, and the AUR rolling build.
 const OPR_PACKAGE: &str = "flea";
@@ -105,14 +105,15 @@ pub fn check() -> i32 {
     report.status()
 }
 
-// flea --update: Omarchy's updater in its own floating terminal, the command its menu and its bar run.
+// flea --update: flea-CachyOS has no Omarchy updater, so the system update (which carries Flea) runs
+// in a real terminal through xdg-terminal-exec, with yay or paru when present so the AUR is included.
 pub fn launch() -> i32 {
-    let mut presenter = Command::new("omarchy-launch-floating-terminal-with-presentation");
+    let mut presenter = Command::new("xdg-terminal-exec");
     terminal::detach(&mut presenter);
-    match presenter.arg(UPDATER).spawn() {
+    match presenter.args(["sh", "-c", UPDATER]).spawn() {
         Ok(_) => 0,
         Err(_) => {
-            eprintln!("flea: Omarchy's updater could not be started, so nothing was updated");
+            eprintln!("flea: the updater could not be started, so nothing was updated");
             FAILED
         }
     }

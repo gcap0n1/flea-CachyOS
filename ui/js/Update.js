@@ -18,11 +18,11 @@ var WORDS = {
     rolling: "flea-git · rolling",
     source: "Built from source",
     noteLaunched: "Restart Flea when the update finishes",
-    noteFailed: "Offline: Omarchy update still opens",
+    noteFailed: "Offline: the updater still opens",
     noteRolling: "Rolling build: yay -Sua --devel follows main",
     noteSource: "Built locally: rebuild from the checkout",
-    opening: "Opening Omarchy update · restart Flea when it finishes",
-    launchFailed: "Omarchy's updater could not be started."
+    opening: "Opening the updater · restart Flea when it finishes",
+    launchFailed: "The updater could not be started."
 }
 
 // The four words `flea --update check` prints first, see src/update.rs; anything else is a check that failed.

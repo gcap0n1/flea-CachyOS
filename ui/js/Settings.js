@@ -10,7 +10,6 @@
 var SECTIONS = [
     { id: "view", label: "View", glyph: "sliders" },
     { id: "places", label: "Places", glyph: "star" },
-    { id: "shelf", label: "Shelf", glyph: "shelf" },
     { id: "preview", label: "Preview", glyph: "preview" },
     { id: "keys", label: "Keys", glyph: "keyboard" },
     { id: "display", label: "Display", glyph: "maximize" },
@@ -179,8 +178,8 @@ function rows(section, state) {
 // The sentence beside Effective has a job only while the ruler cannot state the running size: in Follow the two differ whenever Omarchy's size is not one of the seven, and an override is always a stop.
 function effectiveNote(follows, baseSize) {
     var nearest = TextSize.nearest(baseSize)
-    return !follows ? "Your override." : nearest === baseSize ? "Omarchy's own size."
-        : "Omarchy's own size. The ruler marks " + nearest + ", the nearest stop."
+    return !follows ? "Your override." : nearest === baseSize ? "The system's own size."
+        : "The system's own size. The ruler marks " + nearest + ", the nearest stop."
 }
 
 // The SettingsScale board's own division: Flea owns its text override and Omarchy owns the rest. The size follows the desktop until one of TextSize's seven stops is pinned, and the monitor scale and the corner rounding are the compositor's, drawn as the read-only facts they are.
@@ -189,8 +188,8 @@ function displayRows(state) {
     var out = [
         { kind: "group", label: "Text size" },
         { kind: "choice", id: "textMode", label: "Text size", glyph: "type",
-          labels: ["Follow Omarchy", "Override"],
-          value: follows ? "Follow Omarchy" : "Override" },
+          labels: ["Follow system", "Override"],
+          value: follows ? "Follow system" : "Override" },
         // The board's seven-stop ruler, the override's own control, now carrying the numbers it stands for; a size Omarchy invented that is not a stop marks the nearest one.
         { kind: "ruler", id: "textStop", stops: TextSize.STOPS, on: !follows,
           index: TextSize.STOPS.indexOf(TextSize.nearest(state.baseSize)) }
