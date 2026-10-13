@@ -25,8 +25,10 @@ Then:
 
 1. Resolve conflicts. Keep our changes small; if a conflict touches an upstream file we patched, prefer the upstream version and reapply the patch.
 2. Read `CHANGELOG.md` for entries that touch Omarchy-specific paths or commands.
-3. Build and test (see the build section of the README once it exists).
-4. Push: `git push origin cachyos`.
+3. Check what the new code asks of `ui/Commons` and `ui/Ui`: grep `ui/` for `Commons.`, `Style.`, `Util.`, `Border.` and `import qs.Ui`, and add any member our libraries lack (v0.3.10 added `Color.shellFile`, `userShellFile`, `themeShellValues`, `userShellValues` and `Util.clampAlpha` for `ui/Glass.qml`).
+4. Compare upstream's `packaging/flea/PKGBUILD` (depends, install lines) with `packaging/flea-cachyos/PKGBUILD`.
+5. Build and test: `cargo build --release`, `cargo test --release`, `./tests/js.sh` (the theme-palette checks fail without Omarchy's themes installed), then a real launch with `scripts/flea-dev`.
+6. Push: `git push origin cachyos`, then build the package (its version comes from `Cargo.toml`).
 
 ## Why merge
 
