@@ -29,9 +29,12 @@ options=('!debug')
 source=("$pkgname::git+https://github.com/gcap0n1/flea-CachyOS.git#branch=cachyos")
 sha256sums=('SKIP')
 
+# The upstream release from Cargo.toml, plus the commit count and hash: this fork never carries
+# upstream's v* tags (their release workflow publishes on them), so git describe cannot be used.
 pkgver() {
   cd "$pkgname"
-  git describe --long --tags --match 'v[0-9]*' | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+  printf '%s.r%s.g%s' "$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)" \
+    "$(git rev-list --count HEAD)" "$(git rev-parse --short=8 HEAD)"
 }
 
 build() {
