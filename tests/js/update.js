@@ -63,14 +63,14 @@ function runActing(check) {
           "Updating in terminal|false")
     check("an answer landing after a launch leaves the launch standing",
           Update.value(Update.answered(Update.launchedFrom(after(LINES.available), true), LINES.current, 2000)), "Updating in terminal")
-    check("the footer says what a launch did", Update.launchSentence(true).join("|"), "Opening Omarchy update · restart Flea when it finishes|false")
-    check("and says a refused one as an error", Update.launchSentence(false).join("|"), "Omarchy's updater could not be started.|true")
+    check("the footer says what a launch did", Update.launchSentence(true).join("|"), "Opening the updater · restart Flea when it finishes|false")
+    check("and says a refused one as an error", Update.launchSentence(false).join("|"), "The updater could not be started.|true")
     function noted(status) { var n = Update.note(status); return n === null ? "none" : n.join("|") }
     check("the note asks for a restart in the accent after a launch",
           noted(Update.launchedFrom(after(LINES.available), true)), "Restart Flea when the update finishes|accent")
     check("and explains offline, rolling and source in the foreground",
           [LINES.offline, LINES.rolling, LINES.source].map(function (line) { return noted(after(line)) }).join(", "),
-          "Offline: Omarchy update still opens|foreground, Rolling build: yay -Sua --devel follows main|foreground, "
+          "Offline: the updater still opens|foreground, Rolling build: yay -Sua --devel follows main|foreground, "
           + "Built locally: rebuild from the checkout|foreground")
     check("and is absent everywhere else",
           [Update.idle(), Update.checking(Update.idle()), after(LINES.current), after(LINES.available)].map(noted).join(","),

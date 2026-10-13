@@ -58,7 +58,7 @@ function runStops(check) {
 }
 
 function runModes(check) {
-    check("the default is Follow Omarchy", TextSize.following(TextSize.follow()), true)
+    check("the default is Follow system", TextSize.following(TextSize.follow()), true)
     check("and it stores the shape the board names",
           JSON.stringify(TextSize.follow()), '{"mode":"system"}')
     check("an override is not following",
@@ -158,9 +158,9 @@ function runBoardTable(check) {
 function runAnnounce(check) {
     check("the sentence names the size and the way back",
           TextSize.announce({ mode: 16 }, 14),
-          "Text size 16px. Ctrl+Shift+0 follows Omarchy again.")
+          "Text size 16px. Ctrl+Shift+0 follows the system again.")
     check("and following reports whose size it is",
-          TextSize.announce(TextSize.follow(), 14), "Text size follows Omarchy, 14px.")
+          TextSize.announce(TextSize.follow(), 14), "Text size follows the system, 14px.")
 }
 
 // One mapping for every caller, so a swapped delta reddens here instead of shipping twice.

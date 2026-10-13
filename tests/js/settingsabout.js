@@ -51,7 +51,7 @@ function run(check) {
     check("which is in the accent and takes no cursor", note.role + "|" + Settings.focusable(note), "accent|false")
     check("offline explains itself in the foreground",
           about(answered("failed aur 0.3.3-1 -")).filter(function (row) { return row.kind === "hint" })
-              .map(function (row) { return row.label + "|" + row.role }).join(""), "Offline: Omarchy update still opens|foreground")
+              .map(function (row) { return row.label + "|" + row.role }).join(""), "Offline: the updater still opens|foreground")
 
     var auto = find(rows, "updates.autoCheck")
     check("the switch carries no mark and names both triggers in its caption",
