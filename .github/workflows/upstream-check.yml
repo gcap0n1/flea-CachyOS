@@ -116,7 +116,13 @@ jobs:
           $(cat "$RUNNER_TEMP/report.md")
 
           Before merging: read https://github.com/thisisgm/flea/blob/$tag/CHANGELOG.md for Omarchy commands or paths, compare upstream's packaging/flea/PKGBUILD with ours, and run ./tests/js.sh and a real launch locally (docs/cachyos/sync-upstream.md)."
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" -f title="Merge upstream $tag into cachyos" -f head="sync/$tag" -f base="$BASE" -f body="$body" --jq '.html_url'
+          if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" -f title="Merge upstream $tag into cachyos" -f head="sync/$tag" -f base="$BASE" -f body="$body" --jq '.html_url'; then
+            # Settings > Actions > "Allow GitHub Actions to create and approve pull requests" is off.
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues" -f title="Merge upstream $tag into cachyos: pull request not opened" \
+              -f body="sync/$tag is pushed and ready: https://github.com/${GITHUB_REPOSITORY}/compare/$BASE...sync/$tag
+
+          $body" --jq '.html_url'
+          fi
 
       - name: Report a conflict
         if: steps.merge.outputs.clean == 'no'
