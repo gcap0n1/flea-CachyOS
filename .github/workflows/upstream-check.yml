@@ -46,9 +46,11 @@ jobs:
             exit 0
           fi
 
-          gh issue create --title "$title" --body "Upstream published \`$latest\` and \`cachyos\` does not contain it.
+          body="Upstream published \`$latest\` and \`cachyos\` does not contain it.
 
           - Changes: https://github.com/thisisgm/flea/blob/$latest/CHANGELOG.md
           - Procedure: docs/cachyos/sync-upstream.md
 
           Read the changelog for entries that touch Omarchy commands or paths (see docs/cachyos/commons-inventory.md), merge the tag, build, and close this issue."
+          # The REST endpoint: gh issue create goes through GraphQL, which the workflow token was refused.
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues" -f title="$title" -f body="$body" --jq '.html_url'
