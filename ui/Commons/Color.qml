@@ -5,6 +5,7 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
+import Quickshell.Io
 
 Singleton {
     id: root
@@ -48,5 +49,47 @@ Singleton {
     // Sample input: [font]\nbase-size = 14
     function loadShell(body) {
         Style.loadShell(body);
+        root.themeShellValues = root.parseShell(body);
+    }
+
+    // shell.toml flattened to "section.key" -> the value's text, which is how ui/Glass.qml asks for
+    // flea.background-alpha. Sample input: [flea]\nbackground-alpha = 0.85
+    function parseShell(body) {
+        var out = {};
+        var section = "";
+        var lines = String(body || "").split("\n");
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].replace(/#.*$/, "").trim();
+            var head = line.match(/^\[([A-Za-z0-9_.-]+)\]$/);
+            if (head) {
+                section = head[1];
+                continue;
+            }
+            var kv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*["']?([^"']*)["']?$/);
+            if (kv)
+                out[(section ? section + "." : "") + kv[1]] = kv[2].trim();
+        }
+        return out;
+    }
+
+    // The theme's shell.toml (rendered next to colors.toml) and the user's own overrides.
+    property var themeShellValues: ({})
+    property var userShellValues: ({})
+    readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/flea-cachyos/current"
+    readonly property string configDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/flea-cachyos"
+
+    property FileView shellFile: FileView {
+        path: root.stateDir + "/theme/shell.toml"
+        printErrors: false
+        onLoaded: root.themeShellValues = root.parseShell(text())
+        onLoadFailed: root.themeShellValues = ({})
+    }
+    property FileView userShellFile: FileView {
+        path: root.configDir + "/shell.toml"
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: root.userShellValues = root.parseShell(text())
+        onLoadFailed: root.userShellValues = ({})
     }
 }

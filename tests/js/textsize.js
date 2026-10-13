@@ -65,7 +65,7 @@ function runModes(check) {
           TextSize.following({ mode: 16 }), false)
     check("nothing stored at all reads as following", TextSize.following(undefined), true)
 
-    check("following draws at Omarchy's own size",
+    check("following draws at The system's own size",
           TextSize.effective(TextSize.follow(), 14), 14)
     check("and a later omarchy display text size moves it with no write of Flea's own",
           TextSize.effective(TextSize.follow(), 16), 16)
@@ -158,9 +158,9 @@ function runBoardTable(check) {
 function runAnnounce(check) {
     check("the sentence names the size and the way back",
           TextSize.announce({ mode: 16 }, 14),
-          "Text size 16px. Ctrl+Shift+0 follows the system again.")
+          "Text size 16px. Ctrl+Shift+0 follows the system again")
     check("and following reports whose size it is",
-          TextSize.announce(TextSize.follow(), 14), "Text size follows the system, 14px.")
+          TextSize.announce(TextSize.follow(), 14), "Text size follows the system, 14px")
 }
 
 // One mapping for every caller, so a swapped delta reddens here instead of shipping twice.

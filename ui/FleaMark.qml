@@ -3,6 +3,7 @@
 // CachyOS (GPL, https://commons.wikimedia.org/wiki/File:CachyOS_Logo.svg); see NOTICE.md.
 import QtQuick
 import QtQuick.Shapes
+import "js/Motion.js" as Motion
 
 // The empty state's mark. It plays in three beats and then holds: the outline of the C draws
 // itself, the facets fill in the brand's teal and cyan, then the three dots arrive one by one.
@@ -11,7 +12,7 @@ import QtQuick.Shapes
 Item {
     id: root
 
-    property color color: Theme.color.muted
+    property color color: Theme.color.mutedFrame
     // The logo's own viewBox, scaled to the slot.
     readonly property real grid: 17.921
     readonly property real markScale: Math.min(root.width, root.height) / root.grid
@@ -111,7 +112,7 @@ Item {
     SequentialAnimation {
         id: draw
         // Dissolve the finished mark rather than cut it, then start from blank.
-        NumberAnimation { target: root; property: "opacity"; to: 0.0; duration: 180; easing.type: Easing.OutQuad }
+        NumberAnimation { target: root; property: "opacity"; to: 0.0; duration: Motion.durMs.close; easing.type: Easing.OutCubic }
         PropertyAction { target: outline; property: "dashOffset"; value: root.markDashes }
         PropertyAction { target: root; property: "facets"; value: 0 }
         PropertyAction { target: root; property: "dotA"; value: 0 }

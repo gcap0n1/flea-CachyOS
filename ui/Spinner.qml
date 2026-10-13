@@ -10,7 +10,7 @@ import QtQuick.Shapes
 Item {
     id: root
 
-    property color color: Theme.color.muted
+    property color color: Theme.color.mutedFrame
     // The logo's own viewBox, scaled to the slot.
     readonly property real grid: 17.921
     readonly property real markScale: Math.min(root.width, root.height) / root.grid
@@ -50,6 +50,16 @@ Item {
         }
     }
 
+    // Still for its first second on screen, so a load faster than that draws no motion; a hide puts it back to rest.
+    readonly property int stillMs: 1000
+    property bool crawling: false
+    onVisibleChanged: if (!root.visible) { root.crawling = false; crawl.dashOffset = 0 }
+    Timer {
+        interval: root.stillMs
+        running: root.visible && !root.crawling
+        onTriggered: root.crawling = true
+    }
+
     NumberAnimation {
         target: crawl
         property: "dashOffset"
@@ -58,6 +68,6 @@ Item {
         duration: 1600
         loops: Animation.Infinite
         // Item.visible reads effective visibility, so a hidden ancestor stops the crawl too.
-        running: root.visible
+        running: root.visible && root.crawling
     }
 }
