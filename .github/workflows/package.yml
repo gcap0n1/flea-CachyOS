@@ -75,6 +75,8 @@ jobs:
           repo-add --sign --key "$FPR" "$REPO_NAME.db.tar.zst" "$pkg"
           # pacman asks for <repo>.db and <repo>.files; a release asset cannot be a symlink, so copy.
           for kind in db files; do
+            # repo-add made these two as symlinks to the .tar.zst files; replace them with real copies.
+            rm -f "$REPO_NAME.$kind" "$REPO_NAME.$kind.sig"
             cp -f "$REPO_NAME.$kind.tar.zst" "$REPO_NAME.$kind"
             cp -f "$REPO_NAME.$kind.tar.zst.sig" "$REPO_NAME.$kind.sig"
           done
