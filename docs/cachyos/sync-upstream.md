@@ -34,9 +34,17 @@ Then:
 
 The `cachyos` branch is public. Merging keeps every commit, so a contributor who branched from `cachyos` does not have to rewrite their work.
 
-## Automatic check
+## Automatic sync
 
-`.github/workflows/upstream-check.yml` runs every day at 06:17 UTC. When `thisisgm/flea` has a `vX.Y.Z` tag that `cachyos` does not contain, it opens one issue titled `Merge upstream <tag> into cachyos`. It never merges anything. Close the issue once the tag is merged. GitHub pauses scheduled workflows after 60 days without repository activity; run it by hand from the Actions tab (`Run workflow`) if it goes quiet.
+`.github/workflows/upstream-check.yml` ("Upstream release sync") runs every day at 06:17 UTC. When `thisisgm/flea` has a `vX.Y.Z` tag that `cachyos` does not contain:
+
+- **Clean merge:** it merges the tag on a `sync/<tag>` branch (keeping our `.github`), builds, runs the Rust tests and `scripts/check-commons`, pushes the branch and opens a pull request with the results. Review, run `./tests/js.sh` and a real launch locally, then merge it.
+- **Conflict:** it opens an issue listing the conflicting files. Merge by hand with the steps above.
+- **Push or pull request refused:** it opens an issue saying why.
+
+Nothing reaches `cachyos` without a person merging. The fork's Actions setting "Allow GitHub Actions to create and approve pull requests" must stay on. GitHub pauses scheduled workflows after 60 days without repository activity; run it by hand from the Actions tab if it goes quiet.
+
+`backend::flashpipe::tests::a_zip_member_named_with_brackets_streams_itself` fails on GitHub's Ubuntu runner and passes on CachyOS; treat it as an environment difference unless it fails locally too.
 
 ## Tags
 
