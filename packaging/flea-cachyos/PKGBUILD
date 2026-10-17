@@ -13,11 +13,12 @@ pkgdesc='Fast, keyboard-first file manager: Flea ported to CachyOS, Hyprland and
 arch=('x86_64')
 url='https://github.com/gcap0n1/flea-CachyOS'
 license=('GPL-3.0-only' 'MIT' 'LGPL-3.0-or-later' 'Apache-2.0' 'EPL-2.0' 'BSD-2-Clause')
-depends=('bubblewrap' 'expect' 'gcc-libs' 'glib2' 'glibc' 'gvfs' 'gvfs-afc' 'gvfs-dnssd' 'gvfs-gphoto2' 'gvfs-mtp' 'gvfs-nfs' 'gvfs-smb' 'hicolor-icon-theme' 'kimageformats' 'libheif' 'python' 'python-gobject' 'qt6-multimedia' 'qt6-webengine' 'quickjs-ng' 'quickshell' 'shared-mime-info' 'udisks2' 'usbmuxd' 'util-linux' 'wl-clipboard' 'xdg-terminal-exec' 'xdg-utils')
+depends=('bat' 'bubblewrap' 'expect' 'gcc-libs' 'glib2' 'glibc' 'gvfs' 'gvfs-afc' 'gvfs-dnssd' 'gvfs-gphoto2' 'gvfs-mtp' 'gvfs-nfs' 'gvfs-smb' 'hicolor-icon-theme' 'jq' 'kimageformats' 'libheif' 'python' 'python-gobject' 'qt6-multimedia' 'qt6-webengine' 'quickjs-ng' 'quickshell' 'shared-mime-info' 'udisks2' 'usbmuxd' 'util-linux' 'wl-clipboard' 'xdg-terminal-exec' 'xdg-utils')
 makedepends=('cargo' 'git')
 optdepends=('libarchive: archive listing and extraction'
             '7zip: 7z archive support'
             'imagemagick: image conversion'
+            'libreoffice: office document previews'
             'tailscale: Taildrop sharing'
             'ffmpeg: media metadata in the preview column'
             'ffmpegthumbnailer: video thumbnails'
@@ -49,6 +50,7 @@ package() {
   install -Dm755 tools/flea-gio-auth "$pkgdir/usr/lib/flea/flea-gio-auth"
   install -Dm755 tools/flea-portal "$pkgdir/usr/lib/flea/flea-portal"
   install -Dm755 tools/flea-udisks "$pkgdir/usr/lib/flea/flea-udisks"
+  install -Dm755 tools/flea-mpris "$pkgdir/usr/lib/flea/flea-mpris"
   install -Dm644 packaging/flea.portal -t "$pkgdir/usr/share/xdg-desktop-portal/portals"
   install -Dm644 packaging/org.freedesktop.impl.portal.desktop.flea.service -t "$pkgdir/usr/share/dbus-1/services"
   install -Dm755 tools/flea-filemanager1 "$pkgdir/usr/lib/flea/flea-filemanager1"
