@@ -246,9 +246,10 @@ Item {
         reuseItems: true
 
         // G7 needs an empty press target below the final row even when a long column fills the viewport.
+        // flea-CachyOS: as tall as ui/List.qml's (one chrome strip); rowPaddingY left 7 px, too thin to find.
         footer: Item {
             width: Scroll.contentWidth(view.width, Theme.spacing.rowPaddingX)
-            height: root.pane ? Theme.spacing.rowPaddingY : 0
+            height: root.pane ? Theme.chromeHeight : 0
         }
 
         Flea.FastScrollHandler {

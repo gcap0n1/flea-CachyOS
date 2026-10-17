@@ -53,8 +53,10 @@ var INVENTORY = [
     ["eject", "Eject", "eject", "R", "rrelease"],
     // Flash image opens the flasher with this drive chosen: last, in a group of its own, no switch.
     ["flashImage", "Flash image", "file", "R", "rflash"],
-    ["newFolder", "New folder", "folder-plus", "B", "open"],
-    ["newFile", "New file", "file-plus", "B", "open"],
+    // flea-CachyOS: also on a row's menu (F), so a column that fills the viewport still offers them; they
+    // act on the folder being shown, as the background menu's do.
+    ["newFolder", "New folder", "folder-plus", "FB", "open"],
+    ["newFile", "New file", "file-plus", "FB", "open"],
     ["cut", "Cut", "scissors", "F", "basic"],
     ["copy", "Copy", "copy", "F", "basic"],
     ["paste", "Paste", "clipboard", "FB", "basic"],

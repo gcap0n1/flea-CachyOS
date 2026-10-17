@@ -88,7 +88,8 @@ function runInventory(check) {
               return mine === undefined || mine !== builtMark[id]
           }).join(","), "")
     // SettingsPlaces section 02 adds the listing Favorite action; SettingsMenus keeps its 20 switches and Menus' New folder has none.
-    var reachable = rowSwitches.concat(Settings.LOCKED).concat(["newFolder", "addFavourite"])
+    // flea-CachyOS puts New file on the row menu beside New folder (ui/js/Menu.js), and it has no switch either.
+    var reachable = rowSwitches.concat(Settings.LOCKED).concat(["newFolder", "newFile", "addFavourite"])
     check("no other menu action is omitted from the board's switch inventory",
           Object.keys(built).filter(function (id) { return reachable.indexOf(id) < 0 }).join(","), "")
 }

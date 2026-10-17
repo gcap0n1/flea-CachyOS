@@ -33,7 +33,7 @@ function run(check) {
     check("Restore all uses the authoritative undo geometry", Icons.pathFor("undo"), "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5")
     check("inventory storage ids are unique", Object.keys(Menu.INVENTORY.reduce(function (out, row) { out[row[0]] = true; return out }, {})).length, 57)
     check("default image menu matches Menus specimen", actions(file),
-          "open,openWith,run,openAsText,cut,copy,paste,duplicate,rename,compress,convert,flashDrive,addToShelf,taildrop,dropbox,trash,addFavourite,toggleHidden,toggleLangMarks")
+          "open,openWith,run,openAsText,newFolder,newFile,cut,copy,paste,duplicate,rename,compress,convert,flashDrive,addToShelf,taildrop,dropbox,trash,addFavourite,toggleHidden,toggleLangMarks")
     check("code icons ship enabled with the existing code glyph", entry(file, "toggleLangMarks").label + "|" + entry(file, "toggleLangMarks").glyph, "Hide code icons|code")
     check("code icons flip their verb live", entry(Menu.listingEntries(state({langMarks: false})), "toggleLangMarks").label, "Show code icons")
     check("Settings can hide the code-icons row", entry(Menu.listingEntries(state({hiddenActions: ["toggleLangMarks"]})), "toggleLangMarks").action, undefined)
@@ -41,7 +41,7 @@ function run(check) {
     check("empty clipboard keeps Paste disabled", entry(file, "paste").disabled, true)
     check("populated clipboard enables Paste", entry(Menu.listingEntries(state({ clipboardAvailable: true })), "paste").disabled, false)
     check("folder omits run and open as text; Pane gives a folder no image or archive flag, so no conversion or extraction", actions(Menu.listingEntries(state({ rowMode: 0o040755, rowIsImage: false, rowName: "Photos" }))),
-          "open,openWith,cut,copy,paste,duplicate,rename,compress,addToShelf,taildrop,dropbox,trash,addFavourite,toggleHidden,toggleLangMarks")
+          "open,openWith,newFolder,newFile,cut,copy,paste,duplicate,rename,compress,addToShelf,taildrop,dropbox,trash,addFavourite,toggleHidden,toggleLangMarks")
     check("background menu includes real creation actions in order", actions(Menu.listingEntries(state({ hasRow: false }))),
           "newFolder,newFile,paste,selectAll,openTerminal,addFavourite,sort,toggleHidden,toggleLangMarks,settings")
     var background = Menu.listingEntries(state({ hasRow: false, updateVersion: "0.3.4" }))
