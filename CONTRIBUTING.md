@@ -7,3 +7,4 @@ Thanks for helping. This fork is where improvements to Flea on CachyOS, Hyprland
 - **License**: this fork is GPL-3.0. Any contribution you send is accepted under the same license (see [NOTICE.md](NOTICE.md)).
 - **Keep upstream changes small**: edits to upstream files should stay minimal and isolated, so upstream releases can be merged without pain. See [docs/cachyos/sync-upstream.md](docs/cachyos/sync-upstream.md).
 - **Language**: code, comments, commit messages and issues in English.
+- **Upstream guide**: for bug reports, tests and pull-request style, upstream's own rules apply too; a copy is in [docs/cachyos/upstream-CONTRIBUTING.md](docs/cachyos/upstream-CONTRIBUTING.md).
