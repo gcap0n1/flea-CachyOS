@@ -96,6 +96,7 @@ fn no_test_resolves_the_host_language() {
         ("crates/flea-gui/src/main.rs", 1, "the GUI launch loads the real catalogs"),
         ("crates/flea-gui/src/ipc/server.rs", 1, "the IPC server answers in the user's language"),
         ("crates/flea-gui/src/g2/pv3/kit/window.rs", 1, "the bench-seam media kit loads catalogs as the shipped app does"),
+        ("crates/flea-gui/src/window/settings/actions.rs", 1, "flea-CachyOS: Language opens the user's language file"),
     ];
     // Split so this file never matches itself; every spelling that names the host-resolving Default directly.
     let calls = [

@@ -45,15 +45,22 @@ fn language_code(text: &str) -> &str {
 impl Default for Paths {
     fn default() -> Self {
         let config = env_path("XDG_CONFIG_HOME").or_else(|| env_path("HOME").map(|p| p.join(".config")));
+        let config = config.unwrap_or_else(|| PathBuf::from("/nonexistent"));
+        // flea-CachyOS: without Omarchy's language file, ~/.config/flea/language (written by
+        // flea-cachyos-setup from $LANG) picks the language in the same one-line shape.
         let language_file = env_path("OMARCHY_LANGUAGE_FILE").unwrap_or_else(|| {
-            config.unwrap_or_else(|| PathBuf::from("/nonexistent")).join("omarchy/language")
+            let omarchy = config.join("omarchy/language");
+            if omarchy.exists() { omarchy } else { config.join("flea/language") }
         });
         let exe = std::env::current_exe().ok();
         let catalogs = catalog_dirs(env_path("FLEA_I18N"), exe.as_deref(), Path::new(env!("CARGO_MANIFEST_DIR")), cfg!(debug_assertions));
-        Self {
-            omarchy: env_path("OMARCHY_PATH").unwrap_or_else(|| PathBuf::from("/usr/share/omarchy")),
-            language_file, catalogs,
-        }
+        // flea-CachyOS: without Omarchy, the package ships its language roster and English shell strings
+        // (default/i18n, from src/i18n/fixtures) under /usr/share/flea/omarchy.
+        let omarchy = env_path("OMARCHY_PATH").unwrap_or_else(|| {
+            let system = PathBuf::from("/usr/share/omarchy");
+            if system.exists() { system } else { PathBuf::from("/usr/share/flea/omarchy") }
+        });
+        Self { omarchy, language_file, catalogs }
     }
 }
 

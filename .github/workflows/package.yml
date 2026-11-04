@@ -23,14 +23,16 @@ jobs:
   publish:
     runs-on: ubuntu-24.04
     container: archlinux:base-devel
-    timeout-minutes: 45
+    # 0.4.0's flea-gui (GPUI) roughly triples the release build.
+    timeout-minutes: 150
     env:
       GH_TOKEN: ${{ github.token }}
       REPO_NAME: flea-cachyos
     steps:
       - name: Tools
         run: |
-          pacman -Syu --noconfirm --needed git cargo github-cli
+          # make and pkgconf, plus the libraries flea-gui links at build time (packaging/flea-cachyos/PKGBUILD depends).
+          pacman -Syu --noconfirm --needed git cargo github-cli make pkgconf fontconfig gdk-pixbuf2 glib2 libxcb libxkbcommon libxkbcommon-x11 wayland
           useradd -m builder
 
       - name: Signing key present
@@ -51,7 +53,7 @@ jobs:
         run: |
           install -d -o builder /home/builder/pkg
           install -m644 -o builder packaging/flea-cachyos/PKGBUILD /home/builder/pkg/
-          # makepkg refuses root. --nodeps: runtime depends are not needed to build, only cargo and git.
+          # makepkg refuses root. --nodeps: runtime depends are not installed, only what Tools put there to build.
           su builder -c 'cd ~/pkg && makepkg -f --nodeps --noconfirm'
 
       - name: Sign and publish

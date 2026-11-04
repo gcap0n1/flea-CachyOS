@@ -74,7 +74,16 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if id == "language" {
+        if id == "language" && !std::path::Path::new("/usr/bin/omarchy-menu").exists() {
+            // flea-CachyOS: no Omarchy menu, so the one-line language file (src/i18n/mod.rs) opens in
+            // the text editor; Flea follows the edit live.
+            let file = flea::i18n::Paths::default().language_file;
+            if !file.exists() {
+                let _ = file.parent().map(std::fs::create_dir_all);
+                let _ = std::fs::write(&file, "en\n");
+            }
+            self.launch_settings_program("xdg-open", vec![file.display().to_string()], window, cx);
+        } else if id == "language" {
             self.launch_settings_program(
                 "omarchy-menu",
                 vec!["summon".into(), "setup.language".into()],

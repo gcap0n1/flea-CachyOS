@@ -1,9 +1,19 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-only
-# Run Flea from this checkout: the release binary and the ui/ directory next to it.
+# Run Flea from this checkout: the release binaries (flea and, since 0.4.0, flea-gui beside it), the
+# ui/ directory and the language catalogs, as the package installs them.
 #   scripts/flea-dev [path]     builds if needed, then opens Flea (on [path] when given)
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
-[ -x "$root/target/release/flea" ] || (cd "$root" && cargo build --release)
-export FLEA_UI="$root/ui" FLEA_BIN="$root/target/release/flea"
+[ -x "$root/target/release/flea" ] && [ -x "$root/target/release/flea-gui" ] ||
+  (cd "$root" && cargo build --release --workspace --bins)
+# The language roster the package ships under /usr/share/flea/omarchy (src/i18n/mod.rs).
+if [ -z "${OMARCHY_PATH:-}" ] && [ ! -e /usr/share/omarchy ] && [ ! -e /usr/share/flea/omarchy ]; then
+  roster="$root/target/flea-dev-omarchy/default/i18n"
+  mkdir -p "$roster/en"
+  ln -sfn "$root/src/i18n/fixtures/locales.json" "$roster/locales.json"
+  for f in "$root"/src/i18n/fixtures/omarchy/default/i18n/en/*.json; do ln -sfn "$f" "$roster/en/"; done
+  export OMARCHY_PATH="$root/target/flea-dev-omarchy"
+fi
+export FLEA_UI="$root/ui" FLEA_BIN="$root/target/release/flea" FLEA_I18N="$root/i18n"
 exec "$FLEA_BIN" --gui "$@"

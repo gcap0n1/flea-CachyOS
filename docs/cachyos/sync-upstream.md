@@ -25,10 +25,11 @@ Then:
 
 1. Resolve conflicts. Keep our changes small; if a conflict touches an upstream file we patched, prefer the upstream version and reapply the patch.
 2. Read `CHANGELOG.md` for entries that touch Omarchy-specific paths or commands.
-3. Check what the new code asks of `ui/Commons` and `ui/Ui`: grep `ui/` for `Commons.`, `Style.`, `Util.`, `Border.` and `import qs.Ui`, and add any member our libraries lack (v0.3.10 added `Color.shellFile`, `userShellFile`, `themeShellValues`, `userShellValues` and `Util.clampAlpha` for `ui/Glass.qml`).
-4. Compare upstream's `packaging/flea/PKGBUILD` (depends, install lines) with `packaging/flea-cachyos/PKGBUILD`.
-5. Build and test: `cargo build --release`, `cargo test --release`, `./tests/js.sh` (the theme-palette checks fail without Omarchy's themes installed), then a real launch with `scripts/flea-dev`.
-6. Push: `git push origin cachyos`, then build the package (its version comes from `Cargo.toml`).
+3. Since 0.4.0 the window is `flea-gui` (GPUI, `crates/flea-gui`) and the QML frontend no longer runs; `ui/` still ships as data and for `tests/js.sh`. Grep the new code for Omarchy paths and commands (`omarchy/current/theme`, `omarchy/language`, `/usr/share/omarchy`, `"omarchy-`). Colours reach `flea-gui` through `~/.local/state/omarchy/current/theme/colors.toml`, which Noctalia writes (`packaging/noctalia/flea.toml`); the language through `~/.config/flea/language` and the roster under `/usr/share/flea/omarchy` (`src/i18n/mod.rs`).
+4. Check what the new code asks of `ui/Commons` and `ui/Ui`: grep `ui/` for `Commons.`, `Style.`, `Util.`, `Border.` and `import qs.Ui`, and add any member our libraries lack (v0.3.10 added `Color.shellFile`, `userShellFile`, `themeShellValues`, `userShellValues` and `Util.clampAlpha` for `ui/Glass.qml`).
+5. Compare upstream's root `PKGBUILD` (depends; since 0.4.0 `package()` is `make install`, see the `Makefile`) with `packaging/flea-cachyos/PKGBUILD`.
+6. Build and test: `cargo build --release --workspace --bins`, `cargo test --release`, `./tests/js.sh` (the theme-palette checks fail without Omarchy's themes installed), then a real launch with `scripts/flea-dev`.
+7. Push: `git push origin cachyos`, then build the package (its version comes from `Cargo.toml`).
 
 ## Why merge
 

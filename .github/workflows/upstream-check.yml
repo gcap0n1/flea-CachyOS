@@ -23,7 +23,8 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    # 0.4.0's flea-gui (GPUI) roughly triples the build.
+    timeout-minutes: 120
     env:
       GH_TOKEN: ${{ github.token }}
       BASE: ${{ inputs.base || 'cachyos' }}
@@ -79,7 +80,12 @@ jobs:
           # A failing build or test is a result for the report, not a reason to stop: GitHub runs bash -e.
           set +e
           report="$RUNNER_TEMP/report.md"
-          if cargo build --release --locked > "$RUNNER_TEMP/build.log" 2>&1; then
+          # Since 0.4.0 flea-gui links fontconfig, wayland, xkbcommon and Vulkan: upstream's script installs them.
+          if [ -x packaging/flea-release-build ] && ! packaging/flea-release-build install-deps > "$RUNNER_TEMP/deps.log" 2>&1; then
+            echo "- Build dependencies: **not all installed**, see the run log" >> "$report"
+            tail -n 25 "$RUNNER_TEMP/deps.log"
+          fi
+          if cargo build --release --locked --workspace --bins > "$RUNNER_TEMP/build.log" 2>&1; then
             echo "- Build: passed" >> "$report"
           else
             echo "- Build: **failed**, last lines below" >> "$report"
@@ -130,7 +136,9 @@ jobs:
           set -euo pipefail
           tag='${{ steps.find.outputs.tag }}'
           title="Merge upstream $tag into cachyos: conflicts"
-          open=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length')
+          # An exact title match on the open issues: the search index missed yesterday's issue (#5, #6).
+          open=$(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" --paginate \
+            --jq "[.[] | select(.pull_request == null and .title == \"$title\")] | length" | awk '{n += $1} END {print n + 0}')
           [ "$open" != "0" ] && { echo "already reported"; exit 0; }
           body="Upstream published \`$tag\`, and merging it into \`$BASE\` conflicts in:
 
