@@ -14,6 +14,9 @@ impl Shell {
             || self.menu_opened()
             || self.menu.presentation.at.is_some()
             || self.input.blocked
+            || self.panes[self.focus_side]
+                .as_ref()
+                .is_some_and(|host| host.search.kept.is_some())
     }
     pub(crate) fn pointer_down(
         &mut self,
@@ -22,6 +25,11 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A press takes the keyboard back from an Enter still waiting on its rows, as any key does.
+        for host in self.panes.iter_mut().flatten() {
+            host.filter.enter_after = None;
+            host.search.enter_after = None;
+        }
         if self.input_blocked(cx) {
             return;
         }

@@ -1,4 +1,5 @@
 use super::*;
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::symlink;
 
 // A short root of its own: a socket path over SUN_LEN fails to bind, so it must not depend on where the source lives.
@@ -48,22 +49,32 @@ fn socket_and_directory_are_private_and_symlinks_are_refused() {
 fn stale_requires_both_a_dead_pid_and_a_refused_connection() {
     let root = root();
     let directory = directory(&root).unwrap();
-    let child = std::process::Command::new("true").spawn().unwrap();
-    let dead = child.id();
-    let mut child = child;
-    child.wait().unwrap();
+    // The kernel hands out pids below pid_max only, so pid_max names no process even while other tests spawn.
+    let dead: u32 = fs::read_to_string("/proc/sys/kernel/pid_max")
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
     assert!(!alive(dead));
     let stale = directory.join(format!("{dead}.sock"));
     let listener = UnixListener::bind(&stale).unwrap();
+    // Keep a descriptor alive like a concurrently forked child before exec.
+    let inherited = listener.try_clone().unwrap();
     fs::set_permissions(&stale, fs::Permissions::from_mode(0o600)).unwrap();
     prune(&directory).unwrap();
     assert!(
         stale.exists(),
         "a connectable endpoint is retained even under a dead pid"
     );
+    // Shutdown stops listening through every descriptor, including a fork-inherited one.
+    assert_eq!(
+        unsafe { libc::shutdown(listener.as_raw_fd(), libc::SHUT_RDWR) },
+        0
+    );
     drop(listener);
     prune(&directory).unwrap();
     assert!(!stale.exists());
+    drop(inherited);
     let live = directory.join(format!("{}.sock", std::process::id()));
     let listener = UnixListener::bind(&live).unwrap();
     fs::set_permissions(&live, fs::Permissions::from_mode(0o600)).unwrap();

@@ -10,7 +10,7 @@ use crate::{
     },
 };
 use flea::i18n::I18n;
-use flea::{jsondoc::Json, ui_logic_st1::pages};
+use flea::{jsondoc::Json, ui_logic_settings_pages::pages};
 use gpui::{Context, Window};
 
 #[derive(Default)]
@@ -232,13 +232,11 @@ impl Live for Pane<'_> {
     fn selection_changed(&mut self) {
         self.host.selected.sort_unstable();
     }
-    fn resort(&mut self, order: Order) {
-        let _ = self.host.nav.resort(
-            &mut self.host.pane,
-            order,
-            &mut self.host.selected,
-            self.catalog.tr("navigation.save_failed"),
-        );
+    fn restore_order(&mut self, order: Order) {
+        let _ = self
+            .host
+            .nav
+            .restore_order(&mut self.host.pane, order, &mut self.host.selected);
     }
     fn sort(&mut self, order: Order) {
         self.host.nav.order = order;

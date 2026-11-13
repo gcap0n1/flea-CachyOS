@@ -35,13 +35,19 @@ impl ListState {
         Some(width.min(self.drawn.layout.name.width))
     }
 
+    /// Theme.fileRowHeight, the density row every Columns track draws; a contents search changes only the active pitch.
+    pub fn columns_row(&self) -> f32 {
+        let padding = (6. * f32::from(self.typeface.base) / 12.).round();
+        Metrics::for_typeface(&self.typeface).row
+            + 2. * ((padding * self.density.ratio()).round() - (padding * 0.5).round())
+    }
+
     pub fn file_metrics(&self) -> Metrics {
         let mut metrics =
             Metrics::for_typeface(&self.typeface).for_dual(self.view.dual, self.typeface.body);
-        let padding = (6. * f32::from(self.typeface.base) / 12.).round();
-        metrics.row += 2. * ((padding * self.density.ratio()).round() - (padding * 0.5).round());
+        metrics.row = self.columns_row();
         if self.view.contents {
-            metrics.row = crate::g2::sr1::contents::BLOCK_H;
+            metrics.row = crate::g2::file_search::contents::BLOCK_H;
         }
         metrics
     }
@@ -105,7 +111,7 @@ impl ListState {
             tokens.measured[super::columns::Column::Date.slot()] = 80.;
         }
         if self.view.tags_shown {
-            tokens.name_min += flea::ui_logic_pl4::tags::ROW_SLOT + metrics.gap;
+            tokens.name_min += flea::ui_logic_rail_places::tags::ROW_SLOT + metrics.gap;
         }
         let row = (width - metrics.lane).max(0.);
         let mut layout = if self.view.place_recent.is_some() {

@@ -1,3 +1,4 @@
+use flea::bytename::ExactText as _;
 use super::{
     editor::Editor,
     input::Key,
@@ -14,6 +15,7 @@ use pointer::pointer_key;
 
 pub fn key(model: &mut Model, key: &Key, map: &Map, wire: &mut Wire) -> io::Result<()> {
     let armed = std::mem::take(&mut model.key_arm);
+    super::editor_input::enter_once::cancel(model, key);
     if model.choose_pending {
         if matches!(
             map.action(key, &model.preset).as_str(),
@@ -52,7 +54,7 @@ pub fn key(model: &mut Model, key: &Key, map: &Map, wire: &mut Wire) -> io::Resu
         return super::render::menu_run::key(model, key, map, wire);
     }
     if model.sheet {
-        return super::render::cards::sheet_key(model, key, map);
+        return super::render::cards::sheet_key(model, key, map, &armed);
     }
     if super::trashview::refuses(model, key, map, &armed, wire)? {
         return Ok(());
@@ -79,6 +81,8 @@ pub fn key(model: &mut Model, key: &Key, map: &Map, wire: &mut Wire) -> io::Resu
         super::preview::load(model, true);
         return Ok(());
     }
+    // Leaving Trash empties the listing before its re-list arrives, so a key in between hands the keys back too.
+    super::layout::release_preview_focus(model);
     if model.preview_focus || model.quicklook {
         let context = if model.pdf.is_some() {
             "pdf"
@@ -93,6 +97,9 @@ pub fn key(model: &mut Model, key: &Key, map: &Map, wire: &mut Wire) -> io::Resu
         }
         if matches!(action.as_str(), "tabNext" | "tabPrevious") {
             return act(model, &action, wire);
+        }
+        if let Some(quit) = super::preview_keys::quit(model, key, map, &action) {
+            return act(model, &quit, wire);
         }
         if action == "escape" || action == "focusPreview" {
             model.preview_focus = false;
@@ -139,7 +146,7 @@ pub fn key(model: &mut Model, key: &Key, map: &Map, wire: &mut Wire) -> io::Resu
         } else if let Some(player) = &mut model.player {
             match action.as_str() {
                 "focusNext" | "focusPrevious" => player.control = 1 - player.control,
-                "preview" => player.toggle()?,
+                "preview" | "playPause" => player.toggle()?,
                 "open" => {
                     if player.control == 0 {
                         player.toggle()?;
@@ -158,14 +165,7 @@ pub fn key(model: &mut Model, key: &Key, map: &Map, wire: &mut Wire) -> io::Resu
                 _ => {}
             }
         } else {
-            match action.as_str() {
-                "cursorDown" => {
-                    model.preview_scroll =
-                        (model.preview_scroll + 1).min(super::layout::preview_scroll_limit(model))
-                }
-                "cursorUp" => model.preview_scroll = model.preview_scroll.saturating_sub(1),
-                _ => {}
-            }
+            return super::preview_keys::text(model, key, map, &armed, &action, wire);
         }
         return Ok(());
     }
@@ -193,6 +193,10 @@ pub fn key(model: &mut Model, key: &Key, map: &Map, wire: &mut Wire) -> io::Resu
     }
     if action.starts_with("prefix:") {
         model.key_arm = action;
+        return Ok(());
+    }
+    // An empty folder has nothing to trash, so d arms no prompt that no second key could answer.
+    if action == "trashArm" && model.total == 0 {
         return Ok(());
     }
     // Issue 133: every trash key refuses on a mount gio cannot trash, before d arms and before the backend fails.
@@ -273,62 +277,50 @@ pub(super) fn act(m: &mut Model, action: &str, w: &mut Wire) -> io::Result<()> {
         return Ok(());
     }
     if super::contents::guarded(m)
-        && matches!(
-            action,
-            "open"
-                | "pageForward"
-                | "duplicate"
-                | "copy"
-                | "cut"
-                | "trash"
-                | "trashArm"
-                | "deletePermanently"
-                | "rename"
-                | "preview"
-                | "reveal"
-                | "editFile"
-                | "menu"
-                | "properties"
-                | "factsToggle"
-                | "copyPath"
-                | "copyUri"
-                | "copydirpath"
-                | "copyDirUri"
-                | "copyName"
-                | "copyStem"
-                | "followLink"
-                | "toggleSelect"
-                | "selectNext"
-                | "selectAll"
-                | "invertSelection"
-        )
+        && (copies_a_path(action)
+            || matches!(
+                action,
+                "open"
+                    | "pageForward"
+                    | "duplicate"
+                    | "copy"
+                    | "cut"
+                    | "trash"
+                    | "trashArm"
+                    | "deletePermanently"
+                    | "rename"
+                    | "preview"
+                    | "reveal"
+                    | "editFile"
+                    | "menu"
+                    | "properties"
+                    | "factsToggle"
+                    | "toggleSelect"
+                    | "selectNext"
+                    | "selectAll"
+                    | "invertSelection"
+            ))
     {
         m.fail_key("search.contents.identity");
         return Ok(());
     }
     if m.searching
-        && matches!(
-            action,
-            "paste"
-                | "movePaste"
-                | "duplicate"
-                | "trash"
-                | "trashArm"
-                | "deletePermanently"
-                | "rename"
-                | "copy"
-                | "cut"
-                | "pasteLink"
-                | "pasteAbsoluteLink"
-                | "pasteHardLink"
-                | "copyPath"
-                | "copyUri"
-                | "copydirpath"
-                | "copyDirUri"
-                | "copyName"
-                | "copyStem"
-                | "followLink"
-        )
+        && (copies_a_path(action)
+            || matches!(
+                action,
+                "paste"
+                    | "movePaste"
+                    | "duplicate"
+                    | "trash"
+                    | "trashArm"
+                    | "deletePermanently"
+                    | "rename"
+                    | "copy"
+                    | "cut"
+                    | "pasteLink"
+                    | "pasteAbsoluteLink"
+                    | "pasteHardLink"
+            ))
     {
         m.fail_key("tui.operation.search_busy");
         return Ok(());
@@ -352,6 +344,8 @@ pub(super) fn act(m: &mut Model, action: &str, w: &mut Wire) -> io::Result<()> {
                 | "copyUri"
                 | "copyName"
                 | "copyStem"
+                | "copyRelative"
+                | "copyQuoted"
                 | "followLink"
         )
     {
@@ -415,10 +409,9 @@ pub(super) fn act(m: &mut Model, action: &str, w: &mut Wire) -> io::Result<()> {
         "historyBack" => history(m, false, w)?,
         "historyForward" => history(m, true, w)?,
         "open" | "pageForward" => {
-            if m.choosing
-                && (action == "open")
-                && (!m.selected.is_empty() || m.rows.get(&m.cursor).is_some_and(|r| !r.directory))
-            {
+            // A chooser hands no file to another application: Right and l on a file choose it, as Return does.
+            let file = m.rows.get(&m.cursor).is_some_and(|r| !r.folder());
+            if m.choosing && (file || action == "open" && !m.selected.is_empty()) {
                 if m.pending_clipboard || m.searching {
                     m.fail_key("tui.actions.wait_for_the_selection_to_settle_before_choosing");
                     return Ok(());
@@ -429,9 +422,9 @@ pub(super) fn act(m: &mut Model, action: &str, w: &mut Wire) -> io::Result<()> {
                 return Ok(());
             }
             if let Some(path) = m.current_path() {
-                if m.rows.get(&m.cursor).is_some_and(|r| r.directory) {
+                if m.rows.get(&m.cursor).is_some_and(|r| r.folder()) {
                     navigate(m, path, w)?;
-                } else if crate::open::open(&path.to_string_lossy()) != 0 {
+                } else if crate::open::open(&path.exact_text()) != 0 {
                     m.fail_key("tui.model.could_not_open_selected_file");
                 }
             }
@@ -479,7 +472,7 @@ pub(super) fn act(m: &mut Model, action: &str, w: &mut Wire) -> io::Result<()> {
         "search" | "searchContents" => {
             m.find.mode = action == "searchContents";
             if m.find.mode {
-                m.find.session.scope = flea::ui_logic_sr1::Scope::Folder;
+                m.find.session.scope = flea::ui_logic_file_search::Scope::Folder;
             }
             let folder = m.search_from.clone().unwrap_or_else(|| m.path.clone());
             m.editor = Some(Editor::new("search", String::new(), folder));
@@ -487,7 +480,7 @@ pub(super) fn act(m: &mut Model, action: &str, w: &mut Wire) -> io::Result<()> {
         "reload" => m.refresh(w)?,
         "goHome" | "goConfig" | "goDownloads" => {
             let home = std::env::var_os("HOME")
-                .map(PathBuf::from)
+                .map(flea::bytename::exact)
                 .filter(|p| p.is_absolute());
             if let Some(home) = home {
                 let path = match action {
@@ -501,7 +494,7 @@ pub(super) fn act(m: &mut Model, action: &str, w: &mut Wire) -> io::Result<()> {
             }
         }
         "editFile" => {
-            if m.rows.get(&m.cursor).is_some_and(|r| !r.directory) {
+            if m.rows.get(&m.cursor).is_some_and(|r| !r.folder()) {
                 m.edit_file = m.current_path();
             } else {
                 m.fail_key("tui.external_editor.only_a_regular_file_can_be_edited");
@@ -591,7 +584,7 @@ pub(super) fn act(m: &mut Model, action: &str, w: &mut Wire) -> io::Result<()> {
                 let path = m.row_path(&row);
                 w.send(vec![
                     ("c", word("duplicate")),
-                    ("path", word(&path.to_string_lossy())),
+                    ("path", word(&path.exact_text())),
                 ])?;
             } else {
                 m.fail_key("tui.actions.select_one_available_item_to_duplicate");
@@ -623,7 +616,7 @@ pub(super) fn act(m: &mut Model, action: &str, w: &mut Wire) -> io::Result<()> {
             }
             match m
                 .current_path()
-                .filter(|_| m.rows.get(&m.cursor).is_some_and(|r| r.directory))
+                .filter(|_| m.rows.get(&m.cursor).is_some_and(|r| r.folder()))
             {
                 Some(path) => push_tab(m, path, w)?,
                 None => m.say_key("tui.actions.only_a_folder_opens_in_a_new_tab"),
@@ -672,7 +665,7 @@ pub(super) fn act(m: &mut Model, action: &str, w: &mut Wire) -> io::Result<()> {
             save_preview_column(m);
         }
         "loadPreview" => super::preview::load(m, true),
-        "focusPreview" | "focusNext" => m.preview_focus = m.preview_visible,
+        "focusPreview" | "focusNext" => m.preview_focus = super::layout::preview_focusable(m),
         "tabNext" => return tab(m, (m.tab + 1) % m.tabs.len(), w),
         "tabPrevious" => return tab(m, (m.tab + m.tabs.len() - 1) % m.tabs.len(), w),
         // { and } move the current tab one place, clamping at either end; it stays current and nothing re-lists.
@@ -798,6 +791,22 @@ pub(super) fn navigate(m: &mut Model, path: PathBuf, w: &mut Wire) -> io::Result
     m.forward.clear();
     m.open(path, w)
 }
+// The copy keys and followLink, which read the cursor row or its folder: a guarded contents view and a busy search refuse them alike.
+fn copies_a_path(action: &str) -> bool {
+    matches!(
+        action,
+        "copyPath"
+            | "copyUri"
+            | "copydirpath"
+            | "copyDirUri"
+            | "copyName"
+            | "copyStem"
+            | "copyRelative"
+            | "copyQuoted"
+            | "followLink"
+    )
+}
+
 fn history(m: &mut Model, forward: bool, w: &mut Wire) -> io::Result<()> {
     if m.pending.is_some() {
         return Ok(());
@@ -836,6 +845,11 @@ fn push_tab(m: &mut Model, path: std::path::PathBuf, w: &mut Wire) -> io::Result
     });
     let index = m.tabs.len() - 1;
     tab(m, index, w)
+}
+// The folders the other tabs show, so the backend keeps their settled sizes across this listing.
+pub(super) fn other_tabs(m: &Model) -> Json {
+    let paths = m.tabs.iter().enumerate().filter(|&(i, _)| i != m.tab);
+    Json::Arr(paths.map(|(_, tab)| word(&tab.path.exact_text())).collect())
 }
 fn tab(m: &mut Model, index: usize, w: &mut Wire) -> io::Result<()> {
     if m.pending.is_some() || index >= m.tabs.len() || index == m.tab {
@@ -901,12 +915,12 @@ pub(super) fn send_find(
     count: usize,
     wire: &mut Wire,
 ) -> io::Result<()> {
-    use flea::ui_logic_sr1::Request;
+    use flea::ui_logic_file_search::Request;
     if ask.contents {
         super::contents::send(
             wire,
             Request::Contents {
-                path: ask.root.to_string_lossy().into_owned(),
+                path: ask.root.exact_text().into_owned(),
                 query: ask.query.clone(),
                 hidden: m.hidden,
                 gen: ask.gen as u64,
@@ -917,8 +931,8 @@ pub(super) fn send_find(
         super::contents::send(
             wire,
             Request::Open {
-                scope: ask.root.to_string_lossy().into_owned(),
-                folder: folder.to_string_lossy().into_owned(),
+                scope: ask.root.exact_text().into_owned(),
+                folder: folder.exact_text().into_owned(),
                 hidden: m.hidden,
             },
         )?;

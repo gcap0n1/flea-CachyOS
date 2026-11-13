@@ -1,7 +1,7 @@
 use super::{composition, glass::producers::BodyGround, startup::View};
 use crate::{
     feedback::spinner,
-    g2::dg2::join::{flock, Seed},
+    g2::drag_drop::join::{flock, Seed},
     grid::pane_view::PaneInputs,
     list::{ListElement, Palette},
     palette::Theme,
@@ -36,6 +36,9 @@ impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(test)]
         super::frame_feedback::perf_tests::shell_built();
+        if !self.settings.opened || self.settings.sheet.is_some() {
+            self.settings.cover.set(None);
+        }
         #[cfg(test)]
         if let Some(renders) = cx.try_global::<EmptyOmiShellRenders>() {
             renders.0.set(renders.0.get() + 1);
@@ -52,6 +55,7 @@ impl Render for Shell {
             cx,
         );
         self.sync_font_settings(cx);
+        self.keep_midnight_wake(cx);
         self.sync_search_text();
         self.route_rail(window, cx);
         self.sync_rail(window, cx);
@@ -149,7 +153,7 @@ impl Render for Shell {
             cx,
         );
         for side in 0..2 {
-            let search_empty = self.search_empty(side, window, cx);
+            let search_empty = self.search_empty(side, pane_width(side), window, cx);
             let contents = self.contents_blocks(side).map(Rc::new);
             let state_view = self.pane_state_view(side, cx);
             let Some(host) = self.panes[side].as_mut() else {
@@ -251,7 +255,6 @@ impl Render for Shell {
                 cx,
             );
             let lifter = cx.entity().downgrade();
-            let payload = cx.entity().downgrade();
             panes[side] = Some(
                 div()
                     .id(("file-drag", side))
@@ -264,12 +267,7 @@ impl Render for Shell {
                             lifter.update(cx, |shell, cx| shell.begin_file_drag(side, window, cx));
                         flock(cx)
                     })
-                    .external_drag_payload::<Seed>(move |_, window, cx| {
-                        payload.upgrade()?.read(cx).file_drag_payload(window, cx)
-                    })
-                    .on_drop::<Seed>(cx.listener(move |shell, _: &Seed, window, cx| {
-                        shell.land_own_drag(side, window, cx);
-                    }))
+                    .map(|div| Shell::own_file_drag(div, side, cx))
                     .when(side == 0, |div| Shell::aim_rail_on_drag_move(div, cx))
                     // A pane with no rows yet draws the list ground its rows will draw.
                     .when(!host.drawn_list, |div| {

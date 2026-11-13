@@ -6,6 +6,8 @@ use gpui::SharedString;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mark {
     Folder,
+    /// A folder open in place in the List tree.
+    FolderOpen,
     File,
     FileText,
     Code,
@@ -78,6 +80,7 @@ impl Mark {
     pub fn name(self) -> &'static str {
         match self {
             Self::Folder => "folder",
+            Self::FolderOpen => "folder-open",
             Self::File | Self::Language(_) => "file",
             Self::FileText => "file-text",
             Self::Code => "code",
@@ -98,6 +101,10 @@ impl Mark {
         let (key, data) = match self {
             Self::Language(language) => LOGOS[language.0 as usize],
             Self::Folder => ("flea-mark:folder", svg!("M2 20V3h6l2 3h12v14H2z")),
+            Self::FolderOpen => (
+                "flea-mark:folder-open",
+                svg!("M2 20V3h6l2 3h12v3 M22 11l-2.5 9H2l2.5-9z"),
+            ),
             Self::File => ("flea-mark:file", svg!("M4 22V2h10l6 6v14H4z M14 2v6h6")),
             Self::FileText => (
                 "flea-mark:file-text",
@@ -143,7 +150,7 @@ pub struct Language(u8);
 impl Language {
     /// LangMarks.slugForFile(): a known basename first, then the extension after the last dot; a leading dot is no extension.
     pub fn for_file(name: &str) -> Option<Self> {
-        let lower = name.to_lowercase();
+        let lower = flea::bytename::display(name).to_lowercase();
         let base = lower.rsplit('/').next().unwrap_or(&lower);
         let slug = FILES
             .iter()

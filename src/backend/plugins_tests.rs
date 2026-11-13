@@ -2,7 +2,7 @@
 use super::plugins::{handle, Env};
 use super::testdir::TestDir;
 use crate::uistore::Store;
-use flea::ui_logic_st2::wire::{self, Listing, Outcome, Plugin, Reply, Source};
+use flea::ui_logic_plugin_settings::wire::{self, Listing, Outcome, Plugin, Reply, Source};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -67,13 +67,14 @@ fn stored(env: &Env) -> String {
 }
 
 #[test]
-fn st2_backend_a_fresh_list_is_the_four_built_ins_as_they_ship() {
+fn st2_backend_a_fresh_list_is_the_five_built_ins_as_they_ship() {
     let dir = TestDir::new("st2-list");
     let (none, listing) = ask(&env(&dir), r#"{"c":"plugins","op":"list","id":4}"#);
     assert!(none.is_none() && listing.id == 4);
     let shipped: Vec<(&str, bool, &Source)> = listing.plugins.iter().map(|p| (p.manifest.id.as_str(), p.enabled, &p.source)).collect();
     assert_eq!(shipped, [("flea.shelf", false, &Source::Builtin), ("flea.localsend", true, &Source::Builtin),
-                         ("flea.tailscale", true, &Source::Builtin), ("flea.dropbox", true, &Source::Builtin)]);
+                         ("flea.tailscale", true, &Source::Builtin), ("flea.dropbox", true, &Source::Builtin),
+                         ("flea.airdrop", false, &Source::Builtin)]);
     let shelf = get(&listing, "flea.shelf").shelf.clone().expect("the Shelf's page input");
     assert_eq!((shelf.recent, shelf.rail.as_str(), shelf.pins.len()), (3, "off", 0));
 }
@@ -152,7 +153,7 @@ fn st2_backend_an_add_refuses_what_is_not_a_plugin_by_its_own_code() {
     dir.file("broken/manifest.json", "{\"schemaVersion\":1");
     assert_eq!(add(&broken.display().to_string()), "json");
     assert_no_staging(&env.dir);
-    assert_eq!(ask(&env, r#"{"c":"plugins","op":"add","id":1}"#).1.plugins.len(), 4, "nothing was added");
+    assert_eq!(ask(&env, r#"{"c":"plugins","op":"add","id":1}"#).1.plugins.len(), 5, "nothing was added");
 }
 
 #[test]
@@ -207,7 +208,7 @@ fn st2_backend_a_setting_is_clamped_before_it_is_stored_and_remove_forgets_it() 
     ask(&env, &format!(r#"{{"c":"plugins","op":"add","id":1,"source":"{}"}}"#, source.display()));
     let (done, listing) = ask(&env, r#"{"c":"plugins","op":"set","id":2,"plugin":"me.set","key":"n","value":99}"#);
     assert_eq!(code(done), "");
-    assert_eq!(get(&listing, "me.set").settings, [("n".into(), flea::ui_logic_st2::schema::Value::Int(10))]);
+    assert_eq!(get(&listing, "me.set").settings, [("n".into(), flea::ui_logic_plugin_settings::schema::Value::Int(10))]);
     assert!(stored(&env).contains(r#""me.set":{"enabled":false,"settings":{"n":10}}"#), "{}", stored(&env));
     assert_eq!(code(ask(&env, r#"{"c":"plugins","op":"set","id":3,"plugin":"me.set","key":"missing","value":1}"#).0), "setting");
     assert_eq!(code(ask(&env, r#"{"c":"plugins","op":"set","id":3,"plugin":"me.nobody","key":"n","value":1}"#).0), "unknown");
@@ -227,12 +228,12 @@ fn st2_backend_a_broken_folder_lists_as_failed_under_its_folder_name() {
     dir.file("config/flea/plugins/half.done/manifest.json", "{\"schemaVersion\":");
     dir.dir("config/flea/plugins/.hidden");
     let (_, listing) = ask(&env, r#"{"c":"plugins","op":"list","id":1}"#);
-    assert_eq!(listing.plugins.len(), 5, "a dot folder is not a plugin");
+    assert_eq!(listing.plugins.len(), 6, "a dot folder is not a plugin");
     let broken = get(&listing, "half.done");
     assert_eq!((broken.manifest.name.as_str(), broken.failure.as_ref().map(|f| f.code)), ("half.done", Some("json")));
     let (done, listing) = ask(&env, r#"{"c":"plugins","op":"remove","id":2,"plugin":"half.done"}"#);
     assert_eq!(code(done), "", "a failed plugin can still be removed from its page");
-    assert_eq!(listing.plugins.len(), 4);
+    assert_eq!(listing.plugins.len(), 5);
 }
 
 #[test]
@@ -261,4 +262,16 @@ fn plugin_runtime_builtin_shelf_requests_move_the_bar_each_way() {
         assert!(reply[0].contains(r#""ok":true"#), "{action}: {reply:?}");
     }
     assert_eq!(SYNCED.with(|s| s.borrow().clone()), [true, false], "the Shelf's own requests switch the bar");
+}
+
+#[test]
+fn plugin_ready_deadline_matches_the_published_contract() {
+    let contract = flea::jsondoc::parse(flea::plugin_runtime::protocol::CONTRACT).unwrap();
+    assert_eq!(
+        crate::backend::plugins::READY_DEADLINE.as_secs_f64(),
+        contract
+            .get("readyTimeoutSeconds")
+            .and_then(flea::jsondoc::Json::as_f64)
+            .unwrap(),
+    );
 }

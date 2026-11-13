@@ -1,9 +1,9 @@
 //! Mounted contents search: Ctrl+G, the producer's match lines joined to their rows, and the match line kept.
-use super::tests::{control_key, edit, frame, key, open, reply, Handle};
+use super::tests::{control_key, edit, frame, key, open, reply, results, Handle};
 use crate::backend::Event as BackendEvent;
 use flea::{
     protocol::RowFacts,
-    ui_logic_sr1::{ContentsMatch, ContentsMatches, Kind},
+    ui_logic_file_search::{ContentsMatch, ContentsMatches, Kind},
 };
 use gpui::TestAppContext;
 
@@ -248,10 +248,10 @@ fn m9_g2rows_12_match_blocks_publish_as_one_generation(cx: &mut TestAppContext) 
     // Rows of another listing never borrow these lines, so nothing draws without its own line.
     edit(cx, handle, |shell, _, _| {
         let host = shell.panes[0].as_ref().unwrap();
-        let place = crate::g2::sr1::matches::Place {
+        let place = crate::g2::file_search::matches::Place {
             root: "/files",
             home: "",
-            scope: flea::ui_logic_sr1::Scope::Folder,
+            scope: flea::ui_logic_file_search::Scope::Folder,
         };
         let rows = host.pane.held.rows.clone();
         assert!(host
@@ -273,7 +273,7 @@ fn m9_g2rows_12_match_blocks_publish_as_one_generation(cx: &mut TestAppContext) 
 fn m9_g2rows_12_open_reveal_and_quicklook_keep_match_line(cx: &mut TestAppContext) {
     let (handle, mut read) = contents_needle(cx);
     snapshot(cx, handle, 6, 16, "src/main.rs", true);
-    key(cx, handle, "enter", None);
+    results(cx, handle);
     while read().is_some() {}
     edit(cx, handle, |shell, _, _| {
         // Quick Look's seam (G2ROWS-27): the cursor row's match line from the search owner.
@@ -311,7 +311,7 @@ fn m9_g2rows_12_open_reveal_and_quicklook_keep_match_line(cx: &mut TestAppContex
 fn m9_g2rows_12_raw_filename_is_never_revealed_from_its_display(cx: &mut TestAppContext) {
     let (handle, mut read) = contents_needle(cx);
     snapshot(cx, handle, 6, 16, "src/main.rs", false);
-    key(cx, handle, "enter", None);
+    results(cx, handle);
     while read().is_some() {}
     key(cx, handle, "o", Some("o"));
     edit(cx, handle, |shell, _, _| {
@@ -324,10 +324,10 @@ fn m9_g2rows_12_raw_filename_is_never_revealed_from_its_display(cx: &mut TestApp
 
 #[gpui::test]
 fn m9_g2rows_12_hit_test_and_page_keys_land_on_blocks(cx: &mut TestAppContext) {
-    use crate::g2::sr1::contents::BLOCK_H;
+    use crate::g2::file_search::contents::BLOCK_H;
     let (handle, mut read) = contents_needle(cx);
     snapshot_n(cx, handle, 6, 16, &paths("src/main.rs", 60), true);
-    key(cx, handle, "enter", None);
+    key(cx, handle, "home", None);
     frame(cx, handle);
     while read().is_some() {}
     let (frame_row, viewport) = edit(cx, handle, |shell, _, _| {

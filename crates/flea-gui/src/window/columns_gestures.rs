@@ -52,9 +52,8 @@ pub(super) fn draggable(
     side: usize,
     cx: &mut Context<Shell>,
 ) -> gpui::Stateful<gpui::Div> {
-    use crate::g2::dg2::join::{flock, Seed};
+    use crate::g2::drag_drop::join::{flock, Seed};
     let lifter = cx.entity().downgrade();
-    let payload = cx.entity().downgrade();
     div()
         .id(("columns-file-drag", side))
         .size_full()
@@ -80,12 +79,7 @@ pub(super) fn draggable(
             let _ = lifter.update(cx, |shell, cx| shell.begin_file_drag(side, window, cx));
             flock(cx)
         })
-        .external_drag_payload::<Seed>(move |_, window, cx| {
-            payload.upgrade()?.read(cx).file_drag_payload(window, cx)
-        })
-        .on_drop::<Seed>(
-            cx.listener(move |shell, _: &Seed, window, cx| shell.land_own_drag(side, window, cx)),
-        )
+        .map(|div| Shell::own_file_drag(div, side, cx))
 }
 
 impl Shell {
@@ -104,8 +98,8 @@ impl Shell {
             || self.shown_view() != crate::window::startup::View::Columns
             || self.input_blocked(cx)
             || cx
-                .try_global::<crate::g2::dg1::carry::Carrying>()
-                .is_some_and(|carrying| carrying.carry.active())
+                .try_global::<crate::g2::file_clipboard::carry::Carrying>()
+                .is_some_and(|carrying| carrying.active())
         {
             return;
         }
@@ -284,7 +278,7 @@ fn destination(
             .then_some(drawn.row_at(position))
             .flatten();
         if view.slot == Slot::Active {
-            let dest = crate::g2::dg2::join::row_spot(host, row, carried);
+            let dest = crate::g2::drag_drop::join::row_spot(host, row, carried);
             return (!spring || dest != host.path).then_some(dest);
         }
         let target = match &view.rows {

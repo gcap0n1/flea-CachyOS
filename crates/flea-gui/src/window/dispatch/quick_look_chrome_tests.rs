@@ -3,11 +3,11 @@ use super::preview_tests::{body, close, draw, file, opened};
 use super::quick_look_body_tests::{mounted, open_kind};
 use super::test_shell::{land, set_cursor};
 use crate::{
-    g2::pv1::{doc::View, Body},
+    g2::quick_look_overlay::{doc::View, Body},
     state::Shell,
     window::u07_tests::read,
 };
-use flea::{jsondoc, ui_logic_pv2::archive};
+use flea::{jsondoc, ui_logic_doc_preview::archive};
 use gpui::{Entity, TestAppContext, VisualTestContext};
 
 #[path = "quick_look_symlink_tests.rs"]
@@ -163,6 +163,28 @@ fn an_unreadable_archive_draws_its_recipe_at_the_card_top_with_no_bar(cx: &mut T
     assert!(
         offset >= gpui::px(0.) && offset <= gpui::px(1.),
         "the recipe starts at the card top, inside its frame: {offset:?}"
+    );
+    close(&shell, cx);
+}
+
+#[gpui::test]
+fn the_view_words_sit_14_px_apart_and_close_follows_at_the_bar_gap(cx: &mut TestAppContext) {
+    let (shell, cx, _requests, _script) = mounted(cx);
+    open_kind(&shell, cx, "readme.md");
+    let [rendered, source, close_slot] =
+        ["pv1-word-0", "pv1-word-1", "pv1-close"].map(|selector| {
+            cx.debug_bounds(selector)
+                .unwrap_or_else(|| panic!("the bar draws {selector}"))
+        });
+    assert_eq!(
+        f32::from(source.left() - rendered.right()),
+        14.,
+        "Rendered and Source keep the boards' word gap"
+    );
+    assert_eq!(
+        f32::from(close_slot.left() - source.right()),
+        9.,
+        "close keeps the bar's gap after the last word"
     );
     close(&shell, cx);
 }

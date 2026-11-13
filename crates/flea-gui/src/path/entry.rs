@@ -7,6 +7,7 @@ use std::ops::Range;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod ime;
+mod word;
 pub use ime::right_to_left;
 use ime::{binds, extends};
 #[cfg(test)]
@@ -32,6 +33,17 @@ pub enum Tab {
     Asked(Ask),
 }
 
+/// What a line accepts and shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Kind {
+    #[default]
+    Text,
+    /// A password: the platform never reads its text, and paint shows one bullet per character.
+    Private,
+    /// A number: only ASCII digits enter the line.
+    Digits,
+}
+
 #[derive(Default)]
 pub struct Entry {
     pub editing: bool,
@@ -45,10 +57,7 @@ pub struct Entry {
     pub revision: u64,
     /// The editing session this line belongs to; a later session never repeats it.
     pub generation: u64,
-    /// A password: the platform never reads its text, and paint shows one bullet per character.
-    pub private: bool,
-    /// A number: only ASCII digits enter the line.
-    pub digits: bool,
+    pub kind: Kind,
     history: Vec<(String, Range<usize>, bool)>,
 }
 
@@ -78,8 +87,7 @@ impl Entry {
         *self = Entry {
             editing: true,
             text: text.into(),
-            private: self.private,
-            digits: self.digits,
+            kind: self.kind,
             revision: self.revision + 1,
             generation: SESSIONS.fetch_add(1, Ordering::Relaxed),
             ..Entry::default()
@@ -101,7 +109,7 @@ impl Entry {
         self.cached = None;
         self.marked = None;
         self.history.clear();
-        if self.private {
+        if self.kind == Kind::Private {
             self.text.clear();
             self.selected = 0..0;
         }
@@ -309,7 +317,7 @@ impl Entry {
 
     fn remember(&mut self) {
         // A composition is one edit; only its first preedit saves the preceding line.
-        if !self.private && self.marked.is_none() {
+        if self.kind != Kind::Private && self.marked.is_none() {
             if self.history.len() == UNDO_LIMIT {
                 self.history.remove(0);
             }
@@ -367,6 +375,7 @@ impl Entry {
 
     /// The selected text a copy may take; a private line gives none.
     pub fn copyable(&self) -> Option<&str> {
-        (!self.private && !self.selected.is_empty()).then(|| &self.text[self.selected.clone()])
+        (self.kind != Kind::Private && !self.selected.is_empty())
+            .then(|| &self.text[self.selected.clone()])
     }
 }

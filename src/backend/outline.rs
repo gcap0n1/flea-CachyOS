@@ -1,4 +1,5 @@
 //! Session expansions compose ordinary directory listings into one row numbering.
+use flea::bytename::ExactText as _;
 use super::{dirsize::DirSize, listing::Listing, state::State};
 use crate::jsondoc::Json;
 use std::{
@@ -43,7 +44,7 @@ impl Session {
         } else {
             self.open
                 .iter()
-                .map(|path| Json::Str(path.to_string_lossy().into_owned()))
+                .map(|path| Json::Str(path.exact_text().into_owned()))
                 .collect()
         };
         set(&mut fields, "outlinePaths", Json::Arr(paths));
@@ -67,7 +68,8 @@ impl Session {
 
 pub fn request(
     st: &mut State,
-    row: Option<usize>,
+    rows: &[usize],
+    anchor: Option<usize>,
     open: bool,
     enabled: Option<bool>,
     first: usize,
@@ -75,17 +77,33 @@ pub fn request(
     if st.held != super::state::Held::List {
         return Err("open in place needs a folder listing".into());
     }
-    let anchor = if let Some(row) = row {
-        if row >= st.listing.len() || !st.listing.is_dir(row) {
-            return Err(format!("row {row} is not a folder in this listing"));
+    let anchor = if let Some(&named) = rows.first() {
+        // Marked rows outside the window's held rows arrive unchecked; a file or symlink is never is_dir, and with no folder among them the anchor's folder acts.
+        let folder = |&row: &usize| row < st.listing.len() && st.listing.is_dir(row);
+        let mut folders: Vec<usize> = rows.iter().copied().filter(folder).collect();
+        if folders.is_empty() {
+            folders.extend(anchor.filter(folder));
         }
-        let path = st.base.join(st.listing.name(row));
-        if open {
-            st.outline.open.insert(path.clone());
-        } else {
-            st.outline.open.remove(&path);
+        let Some(&lead) = folders.first() else {
+            return Err(format!("row {named} is not a folder in this listing"));
+        };
+        for &row in &folders {
+            let path = st.listing.path(&st.base, row);
+            if open {
+                st.outline.open.insert(path);
+            } else {
+                st.outline.open.remove(&path);
+            }
         }
-        Some(path)
+        let at = st.listing.name(anchor.filter(|&row| row < st.listing.len()).unwrap_or(lead));
+        // The re-list keeps the window's cursor row; a close that hides it selects the outermost folder closing over it.
+        let select = folders
+            .iter()
+            .map(|&row| st.listing.name(row))
+            .filter(|name| !open && at.strip_prefix(name).is_some_and(|rest| rest.starts_with('/')))
+            .min_by_key(|name| name.len())
+            .unwrap_or(at);
+        Some(st.base.join(select))
     } else {
         let Some(enabled) = enabled else {
             return Err("an outline request names a row or enabled".into());
@@ -98,7 +116,7 @@ pub fn request(
     set(
         &mut fields,
         "path",
-        Json::Str(st.base.to_string_lossy().into_owned()),
+        Json::Str(st.base.exact_text().into_owned()),
     );
     set(&mut fields, "first", Json::Num(first.to_string()));
     // The last listing's select is stale here, and a select starts the first window at its row.
@@ -107,7 +125,7 @@ pub fn request(
         set(
             &mut fields,
             "select",
-            Json::Str(anchor.to_string_lossy().into_owned()),
+            Json::Str(anchor.exact_text().into_owned()),
         );
     }
     Ok(encode(fields))
@@ -145,7 +163,7 @@ pub fn expand(
     // Sample input: {"c":"list","path":"/home/gm","outlinePaths":["/home/gm/A","/home/gm/A/B","/srv/C"]}
     let paths: BTreeSet<PathBuf> = crate::json::field_str_array(line, "outlinePaths")
         .into_iter()
-        .map(PathBuf::from)
+        .map(flea::bytename::exact)
         .collect();
     // The session remembers folders open elsewhere, and a listing holding none of them is left as it was read.
     if !paths.iter().any(|path| path.parent() == Some(base)) {
@@ -156,12 +174,12 @@ pub fn expand(
     out.base_dev = listing.base_dev;
     for index in 0..listing.len() {
         append(&mut out, listing, index, "");
-        let path = base.join(listing.name(index));
+        let path = listing.path(base, index);
         if !listing.is_dir(index) || !paths.contains(&path) {
             continue;
         }
         match super::iomount::list_dir(
-            path.to_string_lossy().into_owned(),
+            path.exact_text().into_owned(),
             hidden,
             0,
             line.to_owned(),

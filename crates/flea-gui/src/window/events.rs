@@ -69,7 +69,11 @@ impl Shell {
             return;
         }
         if let BackendEvent::Producer(line) = &event {
-            if self.filter_line(side, line, cx) || self.search_line(side, line, window, cx) {
+            if self.filter_line(side, line, cx) {
+                self.filter_answered(side, window, cx);
+                return;
+            }
+            if self.search_line(side, line, window, cx) {
                 return;
             }
         }
@@ -89,15 +93,15 @@ impl Shell {
                 return;
             }
             let menu_taken = self.menu_reply(side, line, window, cx);
-            if let Some(parsed) = flea::ui_logic_op1::parse(line) {
+            if let Some(parsed) = flea::ui_logic_file_ops::parse(line) {
                 self.operation_line(side, line, window, cx);
-                if let flea::ui_logic_op1::Event::TransferDone(done) = parsed {
+                if let flea::ui_logic_file_ops::Event::TransferDone(done) = parsed {
                     self.transfer_refresh(side, window, cx);
                     self.retry_failed(side, &done.retry_paths, window, cx);
                 }
             }
             if !menu_taken {
-                cx.emit(crate::g2::mn1::join::ProducerReply {
+                cx.emit(crate::g2::context_menus::join::ProducerReply {
                     side,
                     line: line.clone(),
                 });
@@ -163,7 +167,7 @@ impl Shell {
         let event = match event {
             BackendEvent::Plugins(_) => unreachable!("plugins handled above"),
             BackendEvent::Session { generation, reply } => {
-                if host.pane.swap.session.drops(generation) {
+                if host.search_reply_dropped(generation, &reply, &self.locale) {
                     return;
                 }
                 match host
@@ -191,6 +195,7 @@ impl Shell {
                 }
                 self.opener_archive_ready(side, window, cx);
                 self.ipc_listing_answered(side, window, cx);
+                self.search_rows_landed(side, window, cx);
                 return;
             }
             event => event,
@@ -246,11 +251,11 @@ impl Shell {
                 let this_folder = path == host.path
                     || (operation == "scan"
                         && listed
-                        && flea::ui_logic_fb1::errors::denied(&operation, &message));
+                        && flea::ui_logic_status_feedback::errors::denied(&operation, &message));
                 let named = if this_folder {
-                    ""
+                    String::new()
                 } else {
-                    path.rsplit('/').next().unwrap_or_default()
+                    crate::path::crumbs::failed_name(&path, &self.chrome.aliases)
                 };
                 let ended = host
                     .pane
@@ -270,11 +275,11 @@ impl Shell {
                 self.run_navigation(side, window, cx);
                 if !ended {
                     if !matches!(operation.as_str(), "scan" | "list" | "window") || current {
-                        self.status_refused(&operation, &message, named, cx);
+                        self.status_refused(&operation, &message, &named, cx);
                     }
                     return;
                 }
-                self.status_refused(&operation, &message, named, cx);
+                self.status_refused(&operation, &message, &named, cx);
             }
             BackendEvent::ReloadChanged(changed) => {
                 host.nav.reload_changed = Some(changed);

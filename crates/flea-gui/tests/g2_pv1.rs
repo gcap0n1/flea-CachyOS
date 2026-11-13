@@ -3,8 +3,8 @@
 mod test_catalogs;
 // test_catalogs reaches the catalog types through super.
 use flea::i18n::{I18n, Paths};
-use flea::ui_logic_pv1::{kinds::State, rect::Shape};
-use flea_gui::g2::pv1::{Body, Event, QuickLook, Subject};
+use flea::ui_logic_preview_core::{kinds::State, rect::Shape};
+use flea_gui::g2::quick_look_overlay::{Body, Event, QuickLook, Subject};
 use gpui::{
     canvas, div, point, prelude::*, px, size, Context, DispatchPhase, Entity, Modifiers,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, ScrollDelta,
@@ -38,6 +38,8 @@ pub mod svg;
 mod svgfit_join;
 #[path = "g2_pv1/symlink.rs"]
 mod symlink;
+#[path = "g2_pv1/watchdog.rs"]
+mod watchdog;
 
 /// What the listing behind the overlay saw: each counter is one thing #331 says must not move.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

@@ -30,6 +30,154 @@ fn sent_json() -> Vec<Json> {
         .collect()
 }
 
+#[gpui::test]
+fn fxuish_def2_favourite_discovery_preserves_the_validation_refusal(cx: &mut gpui::TestAppContext) {
+    let (shell, cx) = open(cx, "default");
+    land(&shell, cx, "/files", home(), 1);
+    cx.simulate_keystrokes("m");
+    answer(&shell, cx, &[DIR]);
+    let id = captured(&shell, cx);
+    shell.update(cx, |shell, _| shell.menu.reading = true);
+    choose(&shell, cx, "addFavourite");
+    reply(
+        &shell,
+        cx,
+        &format!(
+            r#"{{"t":"menuaction","id":{id},"op":"validate","action":"__menuScripts","ok":false,"error":"Selected item changed; reopen the menu."}}"#
+        ),
+    );
+    assert_eq!(
+        status(&shell, cx),
+        "Selected item changed; reopen the menu."
+    );
+    assert_eq!(
+        read(&shell, cx, "lastMessage", &[]),
+        "Selected item changed; reopen the menu."
+    );
+    assert!(!shell.read_with(cx, |shell, _| shell.menu_opened()));
+    assert!(shell.read_with(cx, |shell, _| shell
+        .launch
+        .settings
+        .data
+        .get("places")
+        .and_then(|places| places.get("favourites"))
+        .and_then(Json::as_array)
+        .is_none_or(|favourites| favourites.is_empty())));
+    shell.update(cx, |shell, _| shell.stop_for_app_quit());
+}
+
+#[gpui::test]
+fn fxuish_def2_favourite_listing_change_refuses_every_stale_menu_path(
+    cx: &mut gpui::TestAppContext,
+) {
+    for path in [
+        "choose", "refresh", "reply", "reread", "moved", "gone", "detail",
+    ] {
+        let (shell, cx) = open(cx, "default");
+        land(&shell, cx, "/files", home(), 1);
+        cx.simulate_keystrokes("m");
+        answer(&shell, cx, &[DIR]);
+        let id = captured(&shell, cx);
+        if matches!(path, "reply" | "detail") {
+            choose(&shell, cx, "addFavourite");
+        }
+        if path == "reread" {
+            cx.update(|window, cx| {
+                shell.update(cx, |shell, cx| {
+                    shell
+                        .step(0, crate::window::navigate::Step::Refresh(None), window, cx)
+                        .unwrap();
+                })
+            });
+        } else if path != "detail" {
+            shell.update(cx, |shell, _| {
+                let host = shell.panes[0].as_mut().unwrap();
+                host.pane.held = std::rc::Rc::new(crate::list::pane::Held {
+                    listing: host.pane.held.listing + 1,
+                    total: host.pane.held.total,
+                    start: host.pane.held.start,
+                    rows: host.pane.held.rows.clone(),
+                });
+                if path == "moved" {
+                    host.path = "/elsewhere".into();
+                }
+                if path == "gone" {
+                    host.pane.held = Default::default();
+                }
+            });
+        }
+        // A late reply rejects its stale listing before detail; a current capture takes the detail branch.
+        match path {
+            "choose" | "reread" | "moved" | "gone" => choose(&shell, cx, "addFavourite"),
+            "refresh" => {
+                cx.update(|window, cx| shell.update(cx, |shell, cx| shell.refresh_menu(window, cx)))
+            }
+            _ => reply(
+                &shell,
+                cx,
+                &format!(
+                    r#"{{"t":"menuaction","id":{id},"op":"validate","action":"addFavourite","ok":false,"error":"The folder was replaced; reopen the menu."}}"#
+                ),
+            ),
+        }
+        let expected = match path {
+            "detail" => "The folder was replaced; reopen the menu.",
+            "moved" | "gone" => "Selected item moved or disappeared; reopen the menu.",
+            _ => "Selected item changed; reopen the menu.",
+        };
+        assert_eq!(status(&shell, cx), expected, "{path}");
+        assert_eq!(read(&shell, cx, "lastMessage", &[]), expected, "{path}");
+        assert!(
+            !shell.read_with(cx, |shell, _| shell.menu_opened()),
+            "{path}"
+        );
+        assert!(shell.read_with(cx, |shell, _| shell
+            .launch
+            .settings
+            .data
+            .get("places")
+            .and_then(|places| places.get("favourites"))
+            .and_then(Json::as_array)
+            .is_none_or(|favourites| favourites.is_empty())));
+        shell.update(cx, |shell, _| shell.stop_for_app_quit());
+    }
+}
+
+#[gpui::test]
+fn fxuish_def2_replaced_favourite_preserves_the_identity_refusal(cx: &mut gpui::TestAppContext) {
+    let (shell, cx) = open(cx, "default");
+    land(&shell, cx, "/files", home(), 1);
+    cx.simulate_keystrokes("m");
+    answer(&shell, cx, &[DIR]);
+    let id = captured(&shell, cx);
+    choose(&shell, cx, "addFavourite");
+    reply(
+        &shell,
+        cx,
+        &format!(
+            r#"{{"t":"menuaction","id":{id},"op":"validate","action":"addFavourite","ok":false,"error":"The folder was replaced; reopen the menu."}}"#
+        ),
+    );
+    assert_eq!(
+        status(&shell, cx),
+        "The folder was replaced; reopen the menu."
+    );
+    assert_eq!(
+        read(&shell, cx, "lastMessage", &[]),
+        "The folder was replaced; reopen the menu."
+    );
+    assert!(!shell.read_with(cx, |shell, _| shell.menu_opened()));
+    assert!(shell.read_with(cx, |shell, _| shell
+        .launch
+        .settings
+        .data
+        .get("places")
+        .and_then(|places| places.get("favourites"))
+        .and_then(Json::as_array)
+        .is_none_or(|favourites| favourites.is_empty())));
+    shell.update(cx, |shell, _| shell.stop_for_app_quit());
+}
+
 // SW-03, EY-196 and EY-293: Open With > Another Application opens the Open With card on the row.
 #[gpui::test]
 fn open_with_another_application_opens_the_card(cx: &mut gpui::TestAppContext) {
@@ -94,13 +242,13 @@ fn open_with_an_application_launches_it(cx: &mut gpui::TestAppContext) {
     shell.update(cx, |shell, _| shell.stop_for_app_quit());
 }
 
-// EY-164: c opens Copy As on the cursor row; Down and Return choose Name, which lands on the clipboard.
+// EY-164: c opens Copy As on the cursor row; Down twice past Relative Path and Return choose Name, which lands on the clipboard.
 #[gpui::test]
 fn copy_as_name_with_return_copies_it(cx: &mut gpui::TestAppContext) {
     let (shell, cx) = on_notes(cx);
     cx.simulate_keystrokes("c");
     answer(&shell, cx, &[FILE]);
-    cx.simulate_keystrokes("down enter");
+    cx.simulate_keystrokes("down down enter");
     settle(cx);
     validated(&shell, cx, "copyAs:copyName", &["/files/notes.txt"]);
     assert_ne!(status(&shell, cx), UNAVAILABLE);
@@ -124,7 +272,7 @@ fn new_file_from_the_background_opens_its_card(cx: &mut gpui::TestAppContext) {
         shell.read(cx).operation_view(0).is_some_and(|view| {
             matches!(
                 view.read(cx).model.dialog,
-                Some(crate::g2::op1::model::Dialog::NewFile { .. })
+                Some(crate::g2::file_ops::model::Dialog::NewFile { .. })
             )
         })
     });
@@ -201,7 +349,7 @@ fn new_file_in_rail_recent_refuses_from_the_menu(cx: &mut gpui::TestAppContext) 
         shell.read(cx).operation_view(0).is_some_and(|view| {
             matches!(
                 view.read(cx).model.dialog,
-                Some(crate::g2::op1::model::Dialog::NewFile { .. })
+                Some(crate::g2::file_ops::model::Dialog::NewFile { .. })
             )
         })
     });

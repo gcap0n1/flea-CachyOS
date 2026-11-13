@@ -4,7 +4,7 @@ use crate::{
 };
 use flea::{
     jsondoc::Json,
-    ui_logic_st1::{edit, pages, textsize},
+    ui_logic_settings_pages::{edit, pages, textsize},
 };
 use gpui::{Context, Window};
 
@@ -49,14 +49,34 @@ impl Shell {
                 if let Some(host) = &mut self.panes[self.focus_side] {
                     host.status = sentence.clone().into();
                 }
-                self.status_note(&sentence, cx);
+                let catalog = self.locale.catalog.clone();
+                let settings_errors = [
+                    "settings.error.unreadable",
+                    "settings.error.favourites_unread",
+                    "settings.error.not_saved",
+                ]
+                .map(|key| catalog.tr(key));
+                let failed = self.settings.messages.as_ref().is_some_and(|line| {
+                    line.read(cx)
+                        .messages()
+                        .errors()
+                        .iter()
+                        .any(|error| settings_errors.contains(&error.text))
+                });
+                if failed {
+                    self.status_messages(cx, |messages, now| {
+                        messages.say_receipt_behind(&catalog, &sentence, now)
+                    });
+                } else {
+                    self.status_note(&sentence, cx);
+                }
             }
             "viewList" | "viewColumns" | "viewGrid" | "viewDual" => {
                 self.choose_settings_view(
                     match action {
                         "viewColumns" => View::Columns,
                         "viewGrid" => View::Grid,
-                        "viewDual" => View::Dual,
+                        "viewDual" => self.dual_key_view(),
                         _ => View::List,
                     },
                     window,
@@ -83,6 +103,8 @@ impl Shell {
                 let _ = std::fs::write(&file, "en\n");
             }
             self.launch_settings_program("xdg-open", vec![file.display().to_string()], window, cx);
+        } else if id == "viewDual" {
+            self.choose_settings_view(View::Dual, window, cx);
         } else if id == "language" {
             self.launch_settings_program(
                 "omarchy-menu",
@@ -94,7 +116,8 @@ impl Shell {
             self.settings_update(true, window, cx);
         } else if matches!(
             id,
-            flea::ui_logic_st1::about::ISSUES_URL | flea::ui_logic_st1::about::SPONSORS_URL
+            flea::ui_logic_settings_pages::about::ISSUES_URL
+                | flea::ui_logic_settings_pages::about::SPONSORS_URL
         ) {
             self.launch_settings_program("xdg-open", vec![id.into()], window, cx);
         } else if id == "makeDefault" {
@@ -116,7 +139,7 @@ impl Shell {
             // Places.js openEntry: a bad record says why in the status line, and nothing opens.
             if let Some(error) = row
                 .as_ref()
-                .and_then(flea::ui_logic_pl4::places::record_error)
+                .and_then(flea::ui_logic_rail_places::places::record_error)
             {
                 let catalog = self.locale.catalog.clone();
                 let label = row
@@ -130,7 +153,13 @@ impl Shell {
                     &[&label, &catalog.tr(error.key())],
                 );
                 self.status_messages(cx, |messages, now| {
-                    messages.say(&text, true, "", flea::ui_logic_fb1::status::Hint::None, now)
+                    messages.say(
+                        &text,
+                        true,
+                        "",
+                        flea::ui_logic_status_feedback::status::Hint::None,
+                        now,
+                    )
                 });
                 cx.notify();
                 return;
@@ -141,8 +170,7 @@ impl Shell {
                 .and_then(Json::as_str)
                 .map(str::to_owned);
             if let Some(path) = path {
-                self.settings.opened = false;
-                window.focus(&self.focus, cx);
+                // SettingsPanel.qml opens a Favorite without dismissing the panel or moving its keyboard focus.
                 let _ = self.step(
                     self.focus_side,
                     crate::window::navigate::Step::OpenPlace(path),

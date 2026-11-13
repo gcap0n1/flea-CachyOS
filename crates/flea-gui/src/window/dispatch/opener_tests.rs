@@ -6,7 +6,7 @@ use super::Order;
 use crate::window::input::ActionEvent;
 use crate::window::u07_tests::{press, read};
 use flea::protocol::RowFacts;
-use flea::ui_logic_op3::opener::Opened;
+use flea::ui_logic_open_with_properties::opener::Opened;
 use gpui::{Entity, TestAppContext, VisualTestContext};
 use std::{cell::RefCell, rc::Rc};
 
@@ -16,7 +16,7 @@ thread_local! {
 }
 
 // The test launcher: records the argv and answers what the test set, never starting a process.
-fn record(argv: &[String]) -> crate::g2::op3::lane::Exit {
+fn record(argv: &[String]) -> crate::g2::open_with_properties::lane::Exit {
     LAUNCHED.with(|launched| launched.borrow_mut().push(argv.to_vec()));
     ANSWER.with(|answer| answer.borrow().clone())
 }
@@ -285,7 +285,7 @@ fn explicit_open_on_a_search_result_file_opens_that_result(cx: &mut TestAppConte
         1,
         vec![row("sub/deep", true), row("sub/found.txt", false)],
     );
-    cx.simulate_keystrokes("enter down");
+    cx.simulate_keystrokes("down");
     cx.update(|window, cx| {
         shell.update(cx, |shell, cx| {
             let host = shell.panes[0].as_ref().unwrap();

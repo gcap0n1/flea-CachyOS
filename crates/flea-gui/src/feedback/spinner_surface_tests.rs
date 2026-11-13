@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     feedback::spinner::Mode,
-    g2::op1::{host::Overlay, ipc::OmiAdapter, palette::CardPalette},
+    g2::file_ops::{host::Overlay, ipc::OmiAdapter, palette::CardPalette},
     ipc::Adapter,
 };
 use std::sync::Arc;
@@ -118,7 +118,7 @@ fn job_ipc_reports_modes_from_backend_kinds_and_failed_jobs_have_no_omi(cx: &mut
 
 #[test]
 fn accessible_names_use_upstream_mode_labels_and_stable_distinct_ids() {
-    use crate::g2::op1::glyph::{Glyph, Paint};
+    use crate::g2::file_ops::glyph::{Glyph, Paint};
     use gpui::Element;
     let first = super::super::spinner::Slot(Rc::new(Crawl::default()));
     let second = super::super::spinner::Slot(Rc::new(Crawl::default()));
@@ -223,7 +223,7 @@ fn a_hidden_window_samples_paints_and_requests_nothing(cx: &mut TestAppContext) 
 }
 
 #[gpui::test]
-fn operation_omi_uses_the_accent_role_when_frame_ink_differs(cx: &mut TestAppContext) {
+fn operation_spiral_uses_the_muted_frame_role_when_accent_inks_differ(cx: &mut TestAppContext) {
     let (overlay, vcx) = cx.add_window_view(|window, _| {
         let list =
             crate::list::Palette::inherited(&window.text_style(), crate::palette::Theme::default());
@@ -240,7 +240,11 @@ fn operation_omi_uses_the_accent_role_when_frame_ink_differs(cx: &mut TestAppCon
     });
     reveal_jobs(vcx);
     let bounds = vcx.debug_bounds("op1-job-1-mark").unwrap();
-    let accent = overlay.read_with(vcx, |overlay, _| overlay.palette.accent);
+    // TransferCard.qml's spiral takes the muted frame, as the jobs board draws it.
+    let (frame, accent) = overlay.read_with(vcx, |overlay, _| {
+        (overlay.palette.muted_frame, overlay.palette.accent)
+    });
+    assert_ne!((frame.h, frame.s, frame.l), (accent.h, accent.s, accent.l));
     vcx.update(|window, _| {
         let square = bounds.scale(window.scale_factor());
         let quads = window.painted_quads();
@@ -254,7 +258,7 @@ fn operation_omi_uses_the_accent_role_when_frame_ink_differs(cx: &mut TestAppCon
             .all(|quad| quad
                 .background
                 .as_solid()
-                .is_some_and(|ink| (ink.h, ink.s, ink.l) == (accent.h, accent.s, accent.l))));
+                .is_some_and(|ink| (ink.h, ink.s, ink.l) == (frame.h, frame.s, frame.l))));
     });
 }
 

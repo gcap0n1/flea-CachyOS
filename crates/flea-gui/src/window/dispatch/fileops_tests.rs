@@ -7,7 +7,7 @@ use crate::{
 use flea::{
     keys::{self, Frontend},
     protocol::Reply,
-    ui_logic_op1::{lines, trash},
+    ui_logic_file_ops::{lines, trash},
 };
 use gpui::{Entity, TestAppContext, VisualTestContext};
 use std::time::Duration;
@@ -387,3 +387,6 @@ fn ey421_a_created_filename_ending_in_undo_words_stays_whole(cx: &mut TestAppCon
 
 #[path = "newfolder_tests.rs"]
 mod newfolder_tests;
+
+#[path = "band_filter_trash_tests.rs"]
+mod band_filter_trash_tests;

@@ -2,7 +2,7 @@
 use super::boards::rect;
 use super::scenes::ql_svg;
 use super::*;
-use flea::ui_logic_pv1::pixels::MAX_SVG_BYTES;
+use flea::ui_logic_preview_core::pixels::MAX_SVG_BYTES;
 use gpui::{
     px, size, DevicePixels, Entity, ImgResourceLoader, RenderImage, Resource, SvgSize,
     TestAppContext, VisualTestContext, Window,
@@ -17,14 +17,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-// A test that blocks past this ends the whole process, so a hang never holds the broker's lock.
-pub(super) fn watchdog(secs: u64) {
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(secs));
-        eprintln!("svg test watchdog: {secs} s passed, exiting 97");
-        std::process::exit(97);
-    });
-}
+pub(super) use super::watchdog::watchdog;
 
 fn mkfifo(path: &Path) {
     assert!(
@@ -190,8 +183,9 @@ fn a_replaced_svg_raster_frees_its_atlas_tile(cx: &mut TestAppContext) {
     assert_eq!(held(cx, &seen), 1, "expand: one tile held");
     prev = full;
     look.update(cx, |look, cx| look.close(cx));
-    cx.executor()
-        .advance_clock(Duration::from_millis(flea::ui_logic_fb1::CLOSE_MS));
+    cx.executor().advance_clock(Duration::from_millis(
+        flea::ui_logic_status_feedback::CLOSE_MS,
+    ));
     cx.run_until_parked();
     assert_eq!(held(cx, &seen), 0, "close frees the held raster");
     look.update(cx, |look, cx| look.open(ql_svg(), true, cx));
@@ -407,7 +401,7 @@ fn an_oversize_svg_never_reaches_the_rasterizer(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_fifo_named_svg_never_reaches_the_rasterizer(cx: &mut TestAppContext) {
-    watchdog(100);
+    let _watchdog = watchdog(100);
     let root = sandbox("fifo");
     let path = root.join("pipe.svg");
     mkfifo(&path);

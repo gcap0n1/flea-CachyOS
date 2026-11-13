@@ -8,7 +8,7 @@ fn number(value: &Json, key: &str) -> f64 {
 
 #[gpui::test]
 fn notice_layout_hidden_rows_keep_the_complete_hig_sentence(cx: &mut TestAppContext) {
-    let handle = locked(cx, None);
+    let handle = locked(cx, Some(super::HIDDEN_0_4_0));
     cx.simulate_window_resize(handle.into(), gpui::size(gpui::px(1100.), gpui::px(700.)));
     frame(cx, handle);
     let footer = json(cx, handle, "statusFooterState");
@@ -77,7 +77,7 @@ fn notice_layout_long_counts_and_utf8_errors_keep_their_own_space(cx: &mut TestA
                     &sentence,
                     true,
                     "",
-                    flea::ui_logic_fb1::status::Hint::None,
+                    flea::ui_logic_status_feedback::status::Hint::None,
                     now,
                 );
             });
@@ -126,7 +126,11 @@ fn notice_layout_localized_explanation_preserves_text_and_roles(cx: &mut TestApp
     handle
         .update(cx, |shell, _, cx| {
             shell.status_messages(cx, |messages, now| {
-                messages.explain(sentence, flea::ui_logic_fb1::status::Hint::Dismiss, now);
+                messages.explain(
+                    sentence,
+                    flea::ui_logic_status_feedback::status::Hint::Dismiss,
+                    now,
+                );
             });
         })
         .unwrap();

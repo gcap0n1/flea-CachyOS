@@ -1,14 +1,14 @@
 //! The NETWORK row menu on mn1's shared card, the share browser over its own pane's listing and the card's layer.
 use super::Network;
 use crate::{
-    g2::mn1::{element::MenuElement, menu::Face, menu::Outcome},
-    g2::pl2::{bookmarks, menus},
+    g2::context_menus::{element::MenuElement, menu::Face, menu::Outcome},
+    g2::network_shares::{bookmarks, menus},
     state::Shell,
     window::{dispatch::Order, input::ActionEvent},
 };
 use flea::keys::{Context as KeyContext, Match};
-use flea::ui_logic_mn1::fit::Rect;
-use flea::ui_logic_pl4::rail;
+use flea::ui_logic_context_menus::fit::Rect;
+use flea::ui_logic_rail_places::rail;
 use gpui::{
     div, prelude::*, px, AnyElement, Context, KeyDownEvent, MouseButton, MouseDownEvent,
     MouseMoveEvent, Window,
@@ -27,6 +27,7 @@ impl Shell {
         let Some(row) = self.network_row(entry) else {
             return;
         };
+        self.nearby_stop();
         let origin = self.network_origin(side);
         let Some(join) = &self.rail else {
             return;
@@ -51,6 +52,7 @@ impl Shell {
         let Some(network) = self.rail.as_ref().and_then(|join| join.network.as_ref()) else {
             return;
         };
+        network.menu.borrow_mut().minimum = 0.;
         network.menu.borrow_mut().open(
             Face::Place,
             entries,
@@ -77,6 +79,13 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self
+            .network()
+            .is_some_and(|network| network.nearby.is_some())
+        {
+            self.nearby_outcome(outcome, window, cx);
+            return;
+        }
         let action = match outcome {
             Outcome::Fire { action, .. } => action,
             Outcome::Closed | Outcome::Refused(_) => {
@@ -200,6 +209,7 @@ impl Shell {
         let menu = network.menu.clone();
         let shares = network.shares.clone();
         if menu.borrow().opened() {
+            self.nearby_touch();
             let typeface = self.active_typeface();
             let env = self.menu_env(&typeface);
             let outcome = menu.borrow_mut().act(action, None, "", &env, window);
@@ -303,14 +313,21 @@ impl Shell {
                     .on_mouse_move(cx.listener(|shell, event: &MouseMoveEvent, window, cx| {
                         let typeface = shell.active_typeface();
                         let env = shell.menu_env(&typeface);
+                        let mut moved = false;
                         if let Some(network) = shell.rail.as_ref().and_then(|j| j.network.as_ref())
                         {
-                            network.menu.borrow_mut().hover(
+                            let mut menu = network.menu.borrow_mut();
+                            let before = menu.card.as_ref().map(|card| card.cursor);
+                            menu.hover(
                                 event.position.x.into(),
                                 event.position.y.into(),
                                 &env,
                                 window,
                             );
+                            moved = menu.card.as_ref().map(|card| card.cursor) != before;
+                        }
+                        if moved {
+                            shell.nearby_touch();
                         }
                         cx.notify();
                         cx.stop_propagation();
@@ -338,6 +355,7 @@ impl Shell {
         else {
             return;
         };
+        self.nearby_touch();
         let typeface = self.active_typeface();
         let env = self.menu_env(&typeface);
         let outcome = menu.borrow_mut().click(
@@ -354,7 +372,7 @@ impl Shell {
 }
 
 /// The rail-shaped key a join row is found by again.
-fn section_entry(row: &flea::ui_logic_pl1::RailEntry) -> rail::RailEntry {
+fn section_entry(row: &flea::ui_logic_device_rail::RailEntry) -> rail::RailEntry {
     rail::RailEntry {
         path: row.path.clone(),
         uri: row.uri.clone(),

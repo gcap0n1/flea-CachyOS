@@ -43,7 +43,8 @@ fn followup_network_result_tracks_idle_mount_resolve_and_success(cx: &mut TestAp
 
 #[gpui::test]
 fn uish_misc_bare_server_result_finishes_when_share_listing_arrives(cx: &mut TestAppContext) {
-    for (names, expected) in [("old-share\n", "mounted"), ("", "failed")] {
+    // A guest listing nothing is an invitation to sign in (#343), so it settles as a missing credential, not a failure.
+    for (names, expected) in [("old-share\n", "mounted"), ("", "missing-credential")] {
         let recorder = Rc::new(Recorder::default());
         let (shell, cx, _) = open(recorder.clone(), cx);
         let producer = cx.update(|_, cx| shell.read(cx).rail.as_ref().unwrap().places.clone());
@@ -119,7 +120,7 @@ fn followup_network_result_keeps_cancelled_and_missing_credential(cx: &mut TestA
     cx.update(|_, cx| {
         service.update(cx, |service, cx| {
             service.open_share(
-                crate::g2::pl2::mount::Request {
+                crate::g2::network_shares::mount::Request {
                     id: 7,
                     uri: "sftp://user@host/".into(),
                     label: "NAS".into(),
@@ -137,7 +138,7 @@ fn followup_network_result_keeps_cancelled_and_missing_credential(cx: &mut TestA
     cx.update(|_, cx| {
         service.update(cx, |service, cx| {
             service.open_share(
-                crate::g2::pl2::mount::Request {
+                crate::g2::network_shares::mount::Request {
                     id: 8,
                     uri: "sftp://host/".into(),
                     label: "NAS".into(),
@@ -183,7 +184,7 @@ fn followup_network_result_direct_open_preserves_the_last_mount_result(cx: &mut 
                 .service
                 .clone();
             service.update(cx, |service, _| {
-                service.result = crate::g2::pl2::result::ResultState::Failed
+                service.result = crate::g2::network_shares::result::ResultState::Failed
             });
         });
         producer.update(cx, |producer, cx| {

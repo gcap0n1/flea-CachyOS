@@ -1,5 +1,5 @@
 use super::*;
-use flea::ui_logic_st1::{
+use flea::ui_logic_settings_pages::{
     about,
     rows::{Kind, Row},
     update, Text,
@@ -98,6 +98,7 @@ fn probed(owner: &str, answer: &str, cx: &mut gpui::TestAppContext) -> (Drawn, D
             let blank = about::Facts::default();
             view.panel.facts.about.source = blank.source;
             view.panel.facts.about.package = blank.package;
+            view.panel.facts.about.built = blank.built;
             view.panel.rebuild();
         });
         let read = |shell: &crate::state::Shell, cx: &mut gpui::Context<crate::state::Shell>| {

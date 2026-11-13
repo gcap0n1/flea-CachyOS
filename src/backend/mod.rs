@@ -137,6 +137,7 @@ mod searchwalkread;
 #[cfg(test)]
 pub(crate) mod searchwalkhold;
 pub mod searchreq;
+mod searchremap;
 pub mod searchhold;
 pub mod searchpatch;
 pub(crate) mod searchwatch;
@@ -178,6 +179,8 @@ mod providers;
 pub mod localsend;
 // The same CLI's own drawing, read back into rows and sentences.
 pub mod localsendtext;
+// What that terminal shows, replayed as a screen: the panel as drawn and every printed line in order.
+pub mod localsendscreen;
 pub mod permissions;
 pub mod picker;
 pub mod menu_actions;
@@ -259,6 +262,8 @@ pub mod copymanifest;
 pub mod manifestdir;
 pub mod copynode;
 mod copyread;
+mod copystage;
+mod copysweep;
 pub mod unheld;
 mod newfolder;
 pub mod ops;
@@ -275,6 +280,7 @@ pub mod trash;
 pub mod hometrash;
 pub(crate) mod trashdate;
 pub(crate) mod homerestore;
+pub(crate) mod topdirtrash;
 pub mod undo;
 pub mod undoshare;
 pub mod undocodec;
@@ -332,6 +338,9 @@ mod copyexec_tests;
 // Test-only: the closing progress line a paced transfer sends after its last item.
 #[cfg(test)]
 mod transferclose_tests;
+// Test-only: a copied file or new folder takes its name only whole, a quit cancels at the door, and dead siblings are swept.
+#[cfg(test)]
+mod copystage_tests;
 pub mod redo;
 pub mod link;
 // The open listing's directory, watched so an outside change reaches the client; see docs/protocol.md "changed".
@@ -380,6 +389,7 @@ pub mod reaphold;
 #[cfg(test)]
 pub mod renametiming;
 
+pub mod dirsizewatch;
 pub mod dirsizeworker;
 // The decode-free RAW container walker: the largest embedded JPEG preview plus EXIF facts.
 pub mod rawembed;

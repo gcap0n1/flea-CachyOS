@@ -21,13 +21,15 @@ optdepends=('libarchive: archive listing and extraction'
             '7zip: 7z archive support'
             'imagemagick: image conversion'
             'libreoffice: office document previews'
+            'owly: AirDrop sending and receiving'
             'tailscale: Taildrop sharing'
+            'vulkan-swrast: software rendering on a GPU without a Vulkan driver'
             'ffmpeg: media metadata in the preview column'
             'ffmpegthumbnailer: video thumbnails'
             'dropbox-cli: Dropbox share links'
             'zoxide: frecent folders in the folder jump of the path bar')
 provides=('flea' 'dolphin')
-conflicts=('flea' 'flea-bin' 'flea-git' 'dolphin')
+conflicts=('flea' 'flea-bin' 'flea-git' 'dolphin' 'mutt') # mutt also owns /usr/bin/flea.
 options=('!debug' '!lto')
 source=("$pkgname::git+https://github.com/gcap0n1/flea-CachyOS.git#branch=cachyos")
 sha256sums=('SKIP')

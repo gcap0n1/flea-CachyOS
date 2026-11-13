@@ -1,5 +1,5 @@
 //! Shared card reveal from Reveal.qml: cubic fade, an opening rise, and no translation on close.
-use flea::ui_logic_fb1::{out_cubic, CLOSE_MS, OPEN_MS, TRANSLATE_UP_PX};
+use flea::ui_logic_status_feedback::{out_cubic, CLOSE_MS, OPEN_MS, TRANSLATE_UP_PX};
 use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -27,6 +27,12 @@ pub(crate) struct Reveal {
 impl Reveal {
     pub fn visible(&self) -> bool {
         self.shown || self.frame.opacity > 0. || self.transition.is_some()
+    }
+
+    /// The frame the last sample drew.
+    #[cfg(test)]
+    pub fn drawn(&self) -> Frame {
+        self.frame
     }
 
     fn at(&self, now: Instant) -> Frame {

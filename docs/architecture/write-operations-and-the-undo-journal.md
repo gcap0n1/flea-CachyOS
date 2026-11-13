@@ -5,9 +5,18 @@ Fifteen of the main backend's requests write. Twelve are file operations of thei
 (file tags, journalled one `Tags` step per changed file, `tagsreq.rs`) and `bulkrename` (one journal entry for the
 batch, `bulkrename.rs`); a New File from the menu writes
 through `menuaction` and journals `MadeFile` (`opsdispatch.rs` `do_newfile`), and `archive` and
-`convert` write below. Two helpers write on command loops of their own and journal nothing: the trash
-browser's `restore` and `delete` (`trashbrowse.rs`, `trashdelete.rs`) and the permissions dialog's
-`apply` (`permissions.rs`).
+`convert` write below. One helper writes on a command loop of its own and journals nothing: the trash
+browser's `restore` and `delete` (`trashbrowse.rs`, `trashdelete.rs`). The permissions dialog's single-item
+`apply` (`permissions.rs`) journals the same `Mode` step `permissionsBatch` does, under the same `permissions` op,
+so Ctrl+Z restores that mode rather than undoing whatever older write sits under it.
+A `convertbatch` journals one `convert` entry with a `Copied` step per output it published, from the file it read,
+a failed or cancelled batch included (`convertbatch.rs` `step`, landed by `OpMsg::Converted`), so undo removes an
+output only while it is still the untouched result. That step's `from` names the source, and a copy of the source is
+not the conversion, so `Replay::capture` refuses a `convert` entry and redo answers that it cannot be redone, as it
+does for a pasted image. A Convert whose output name is taken lands under Duplicate's next free copy name
+(`photo (converted) copy.jpg`, then `copy 2`) while one can be made and written, picked at the no-replace
+rename, and otherwise refuses with the reason; the GUI card's output probe names the same one (`check.rs`
+`converted`). Combine names its own output, so a taken Combine name refuses at once.
 Trash recovery uses `RecordLeft` before its record is removed and `RecordUnconfirmed` after unlink
 when the recovery folder cannot be reopened or synced: the latter says the record was removed but
 Flea could not confirm that removal on disk, with the cause and the completed delete, restore or recovery state.
@@ -17,6 +26,11 @@ A recovery folder entry read error uses `RecoveryUnreadable(root)`, is logged in
 and ends the walk while preserving the recovered count; its sentence names the folder and the unread
 records left there, while payloads stay in the quarantines their records name.
 Recovery runs on a fresh Trash open or an explicit `list` with `recover:true`; ordinary refresh does not retry it.
+The trash browser lists from `gio list -u -h -a trash::orig-path trash:///`, which escapes a line feed or any other control, non-ASCII or backslash byte in an original as `\xNN`, so one line is one item; an item gio cannot describe (no record, no `Path`, a relative original, or a uri listed twice) is left out and logged, and the rest still list, where one such item used to refuse the whole Trash.
+An original whose bytes are not UTF-8 lists as its exact text (docs/architecture/exact-names.md), so the row draws its lossy spelling and restore moves the item back to the raw bytes its `Path=` names; an original holding a NUL is left out, since it could spell another name's exact tail.
+Empty Trash also removes what the listing leaves out, as `gio trash --empty` does: `src/backend/trashbrowse/sweep.rs` reads `gio list -u -h -a standard::target-uri trash:///`, reviews every unlisted `files` entry (a claim's `.flea-delete-` quarantine never) as a permanent delete with its record, and every `.trashinfo` record whose item is gone in the home Trash and in each Trash that listing reaches. A Trash that still holds a claim's quarantine keeps its records, since a stuck claim can leave its item there with the record back in `info`. A change to any of them after the review makes the confirmation stale. A left-out entry the sweep leaves on disk is logged with its reason: one the review refused and one the removal had to leave each by its path, the records kept beside a claim's quarantine once, by their `info` folder. The delete reply's `leftover` counts those still left out when the sweep runs, kept records included and the quarantine itself never, so the footer adds how many leftover entries could not be removed; an entry a cancel stopped the sweep before trying is not counted. A target-uri listing gio refuses is logged too, and the unlisted `files` entries it would have named are then neither removed nor counted. The count and bytes the card shows stay the listed items'.
+The trash browser's `restore` runs inside one `FolderSyncs` batch (`src/backend/trashdelete/syncs.rs`): each claim's sync of its Trash folder and of the recovery folder after cleanup, which ran once per item, runs once per folder when the batch closes, before the reply, and so does a new sync of each folder an item went back to. The claim's own record and quarantine syncs stay per item, since recovery needs them before and after each move.
+The trash browser's `restore` recreates an original folder that is gone before it moves the item back, the same as undo and gio, so a gone folder no longer fails the restore; one that cannot be made refuses and leaves the item in the Trash.
 Rollback keeps the first claim refusal and its cause visible, with any record cleanup failure logged separately.
 Completed steps name their temporary folder through its stable path, never an expired descriptor alias.
 Recovery log assertions inspect only lines after a `seen` offset captured before the operation.
@@ -132,8 +146,15 @@ the listing on it, so the duplicate sits on disk unmentioned until some later li
 exactly as the partial target above does. An archive compress, extract or convert publishes its staged result
 through the same path (issue 370), by `renamecompat::rename_cancellable` with the job's own cancel: a cancel during
 the copy removes the partial target and the job answers cancelled, and the copy reports no progress past the job's
-last sample. Every other filesystem and error, and every
-`rename_noreplace` caller but `rename`, its undo, `move_any` and those three publishes, stays on the atomic syscall. Mountinfo's escaped mount point is decoded and the deepest
+last sample. The stage is the job's own, so that publish skips the preflight a person's move takes, and a stage
+its drive will not let go keeps the landed copy as the result under `rename-kept` even when the stage stayed whole;
+the job then clears the stage or names it. On a copy-fallback mount (`fuse.rclone`, `fuse.megafs`, a GVFS WebDAV path) those three, a combine and a
+batch convert keep their work folder on this computer instead of beside the destination (`src/backend/workhome.rs`):
+the cache's `flea/work`, then `/var/tmp`, then the temp folder, the first with room for the stage, else the job is
+refused with its size. rclone uploads a staged file while the job runs and keeps a copy of one Flea unlinks, so a stage
+on the mount would not go and stayed on the user's drive; off the mount the publish crosses filesystems and lands once
+through the same exclusive copy. Every other filesystem and error, and every
+`rename_noreplace` caller but `rename`, its undo, `move_any` and those five publishes, stays on the atomic syscall. Mountinfo's escaped mount point is decoded and the deepest
 enclosing mount wins, so a nested non-rclone mount cannot inherit the exception.
 That kept copy answers `rename-kept` rather than `rename`, because the rename half
 succeeded and the name it came from may be whole, a remnant, or already gone. The error line names the source in `path` and carries the removal's own message in `msg`;
@@ -175,8 +196,11 @@ redo, as a replaced move source does. That check judges a `Tags` step by its dev
 write itself moves the file's ctime: a retagged file passes it and is skipped by the replay's tag compare. A partial `permissions` undo captures the restored steps for redo, so redo replays
 the undone half before anything older. A hard link is removed only while its source still holds the same
 dev and inode, so undo leaves the last name in place when the source is gone or replaced. A copy that fails short of a
-cancel (ENOSPC, EPERM, a socket deeper in the tree) leaves the partial destination it created on disk,
-because removing it on a transient error would destroy data, and `copyfile.rs` reports that path in
+cancel (ENOSPC, EPERM, a pulled device) leaves nothing under a name it created: a new folder was built under a hidden
+sibling and a file was unnamed or under one (see "A copied file or folder takes its name only once it is whole" below), and
+that goes with the failure, so there is nothing to journal. What a copy wrote in place stays, because removing it on a
+transient error would destroy the files that landed whole: a tree on a FUSE destination, the entries a merge landed in a
+folder that already existed, and a sibling whose removal itself failed. `copyfile.rs` reports that path in
 `Progress.partial` so `transfer` and `duplicate` journal it as a `Copied` step. A failed tree copy records every path it creates in `copymanifest.rs` as it runs, each identity captured at create from the copy's own descriptor (fstat) or its at-path pin and buffered to an anonymous file on the runtime filesystem in 64 KiB batches, never on the destination, so a full destination cannot fail the manifest and the journal holds no descriptor on the mount being ejected; every directory move is manifested, since EXDEV through a symlinked parent defeats a device check and a rename drops it unread. A failed append latches and the transfer reports it loud beside the copy error. Finish stats nothing, so a failed or cancelled copy answers at once. Each `Copied` manifest stays in the recording backend keyed by a per-entry nonce stored in the file, so a claim by that backend reattaches it and walks it deepest first, removing each recorded path only while it still holds the recorded identity and keeping a file edited after the copy, a path replaced by another inode, and a directory left non-empty by a stray, reporting each kept path with its cause; a claim elsewhere finds no key and takes the whole-tree fallback, and a manifest that never verified a record falls back the same way, while a success journals the plain step with no manifest. A destination that already existed is never reported, because nothing was created there.
 corner: a copy is not snapshot-isolated, so a concurrent write into a recorded path that keeps its identity goes with the tree; only identity mismatch keeps a path.
 
@@ -204,6 +228,7 @@ item's sentence, the first entry and the count.
 **A cross-device move of many items confirms its folders once per batch instead of once per item.**
 `src/backend/movebatch.rs` stages each copy and only removes a batch's sources after one confirm.
 On a block vfat stick each copy holds its file and skips its own fsync.
+The held files confirm at 64 files or once the files that skipped their own confirm hold one 8 MiB confirm slice (`HELD_BYTES`), whichever comes first, so files just under the 1 MiB first slice never count more than one slice and one file ahead of the drive; a file past that slice confirmed its own bytes and adds none.
 Elsewhere each copy fsyncs its file as today.
 The stick is found from the destination's resolved path, the one `dest_is_durable` already classifies, so a destination reached through a symlink batches like the stick and a link into an rclone mount stays rclone; `resolved_in` in `src/backend/extclass.rs` walks the link chain one component at a time with `readlink` (at most 40 links), looks up each prefix's mount in the mount table before the next syscall, and at the first prefix inside a mount that can wedge a syscall (a share, a FUSE mount, a gvfs path) stops and answers that prefix plus the unresolved tail, so no syscall ever lands inside such a mount; `classify_in` and the fsinfo answer call that same walk, so no classifier canonicalizes through a link into a share.
 That resolved-path decision moves two ceilings, each re-derived with `wc -l`: `src/backend/durable.rs` 803 to 870 for the decision and its walk, and `src/backend/durable_tests.rs` 1305 to 1396 for its five gates. Moving the walk into `src/backend/extclass.rs` (300 to 381, inside the hard cap) takes `src/backend/durable.rs` back from 870 to 809, re-derived with `wc -l`.
@@ -295,7 +320,9 @@ corner: replacing N items through gio costs two `gio` lists per batch, one befor
 `gio trash --restore` refuses an original path (`Location given doesn't start with trash:///`), and two
 files trashed from one path both list that same original, so a later lookup cannot tell them apart.
 `trash.rs` therefore reads `gio trash --list` before and after the call and keeps the entries that are
-new. A `trash` request first renames each item whose own device is the home Trash's into it in-process (`hometrash.rs` `rename_to_home`, the same path a Replace takes), which names its own `trash:///` entry, so that item costs no gio and no list; only the paths left over (another filesystem, an item inside the Trash, a rename that failed) take the gio path and its two lists, and the request syncs the folders its renames touched once. For the paths that take gio, when a settle list fails or lists nothing new, a trash step (`trash_checked`) and a Replace step both keep the before list's URIs for their own path (none when the before list itself failed) and a time (the moment the chunk holding the path went to `gio trash`; a Replace trashes one path and keeps the moment its call began, taken before `gio` runs like a chunk's), and undo resolves the step from a fresh list only when exactly one entry for that path is new since and its deletion date falls from five seconds before that time to five seconds past the longest a `gio` call runs (`CHUNK_SECS`, the 10 s timeout and 1 s kill delay); a step with no trash time (an old journal record only) and a path with two new entries both refuse with "cannot be restored" rather than guess, and a list that fails at undo refuses with "the Trash could not be listed", never claiming the item is gone. The operations design says restore takes the original path; it does not, and this is the deviation. Undo puts a top-level home Trash entry back in-process (`homerestore.rs`), as gvfsd-trash does, when its info file's `Path=` names the step's own path byte for byte, refusing an occupied original and leaving the entry; any other entry goes through `gio trash --restore`.
+new. A `trash` request first renames each item whose own device is the home Trash's into it in-process (`hometrash.rs` `rename_to_home`, the same path a Replace takes), which names its own `trash:///` entry, so that item costs no gio and no list; only the paths left over (another filesystem, an item inside the Trash, a rename that failed) take the gio path and its two lists, and the request syncs the folders its renames touched once. For the paths that take gio, when a settle list fails or lists nothing new, a trash step (`trash_checked`) and a Replace step both keep the before list's URIs for their own path (none when the before list itself failed) and a time (the moment the chunk holding the path went to `gio trash`; a Replace trashes one path and keeps the moment its call began, taken before `gio` runs like a chunk's), and undo resolves the step from a fresh list only when exactly one entry for that path is new since and its deletion date falls from five seconds before that time to five seconds past the longest a `gio` call runs (`CHUNK_SECS`, the 10 s timeout and 1 s kill delay); a step with no trash time (an old journal record only) and a path with two new entries both refuse with "cannot be restored" rather than guess, and a list that fails at undo refuses with "the Trash could not be listed", never claiming the item is gone. The operations design says restore takes the original path; it does not, and this is the deviation. Undo puts a top-level home Trash entry back in-process (`homerestore.rs`), as gvfsd-trash does, when its info file's `Path=` names the step's own path byte for byte, refusing an occupied original and leaving the entry; any other entry goes through `gio trash --restore`. Each in-process restore recreates a missing original folder first, as gio does, and an undo holds the folder syncs of all its restores (`homerestore.rs` `SyncBatch`) and syncs each folder they touched once, before the journal records the undo, where a sync per item made a 100,000-item undo take 95 to 102 s against 5 s.
+
+**Mount Trash on volumes gio refuses (`topdirtrash.rs`).** Flea reads the mountinfo root and source fields once per request and attempts a topdir Trash rename on block-backed subvolume and bind mounts when the home Trash cannot accept the item; network, FUSE and autofs mounts stay with gio and are never probed. It checks the administrator's `.Trash` for a real directory with its sticky bit set, then uses a private, user-owned `.Trash/<uid>` or falls back to `.Trash-<uid>`. Directory handles keep links out of the files and info paths. Each move reserves its `.trashinfo` exclusively before renaming, writes `Path=` relative to the mount top, and never copies across devices. If neither location can accept the item, gio retains the existing refusal and the source remains intact. Trash browsing checks both known topdir stores, merges their entries with the home listing, and keeps equal names on different stores distinct. Absolute records from older writers remain readable. Undo and the Trash view use the same identity-checked claim, record validation, restore and deletion machinery; a changed record or occupied destination is refused without overwriting.
 
 **Which paths were trashed is read off the filesystem, not off `gio`'s exit status**, which covers the
 whole batch. A path still present afterwards is counted `failed`.
@@ -304,7 +331,42 @@ whole batch. A path still present afterwards is counted `failed`.
 cancel flag between chunks and unlinks what it had written. The operations design says the in-flight
 item finishes; it does not here, because a cancel that waits out a multi-gigabyte copy is not a cancel
 and a half-written file is not a result anyone asked for. A `quit` or a closed stdin cancels the same
-way and waits for the terminal line, so shutting down mid-copy leaves nothing half-written either.
+way and waits for the terminal line, so shutting down mid-copy leaves nothing half-written either. Both cancel at the
+door, as `transfercancel` does: `events.rs` sets the slot operation's flag and every detached job's (a copy is one) as the line or the end of input is read,
+because a `quit` behind a listing still out on a busy device (a phone's MTP mount serves one request at a time) waited
+for that scan, up to its mount deadline, while the copy ran on, and a device pulled meanwhile failed the read short of a
+cancel. After the shutdown the backend points stdin and stdout at `/dev/null` (`run::let_go_of_client`) before it
+exits, because a scan worker the kernel still holds in a dead mount's `readdir` keeps the process, and with it the pipe,
+alive until that call returns; the window takes the end of output as the drain and reaps the process off its own thread
+(`crates/flea-gui/src/backend/worker.rs`).
+
+**A copied file or folder takes its name only once it is whole.** A copy that creates a new folder (a folder
+copied or moved across filesystems, or a subfolder a merge adds) builds it under a hidden sibling in the destination folder,
+`.flea-part-<boot>-<pid>-<n>` (the first eight hex digits of the boot id, the backend's pid and a per-process count), writes
+every entry inside it in place, gives it the source's mode and mtime last, and then one `rename_noreplace` gives it the
+name, so a tree of ten thousand files pays one rename. A file copied into a folder that already exists (a loose selection,
+or a merge) is created exclusively with the source's mode as an `O_TMPFILE` inode with no name, and `linkat` through its
+`/proc/self/fd` entry names it once whole; a filesystem whose first `O_TMPFILE` create is refused (vfat, exfat, nfs, cifs)
+is remembered by its magic for the life of the backend, and its files go to a hidden sibling of the same shape and a
+`rename_noreplace`. Either way the mtime and tags (through the descriptor) go on first, a durable destination confirms the
+bytes, and only then does the name appear (a `batch_syncfs` stick names a file at once and confirms it at its next batch
+`syncfs`, still before any move removes a source), so a name another writer took meanwhile answers `EEXIST` through the same
+`unheld::refused` the exclusive create used, the staged copy goes, and the other file or folder stays. Mid-copy the
+destination shows nothing under the name, so a kill or a crash leaves at most a hidden sibling, and an unnamed file leaves
+nothing at all; a power loss can still leave a name short while its bytes are unconfirmed (on a destination the copy does
+not confirm, or on a `batch_syncfs` stick before its batch `syncfs`), as before. The next `transfer` into the folder removes
+this user's regular files and folders whose whole name has that shape and whose copy cannot finish: same boot and its
+process gone, or another boot (on a kernel network share, `nfs`, `cifs`, `smb2`, `9p` or `ceph`, only once unchanged for an
+hour by its ctime, since another machine may still be writing it, and never another boot's folder there, whose ctime
+does not move for writes deeper in it); `copysweep.rs` does this. A name with anything around
+that shape and a link are never matched.
+corner: a FUSE destination (rclone, gvfs MTP, WebDAV and SMB, any other daemon), or one whose `statfs` failed, writes in place as before, because its
+rename may be refused, done as a copy on the device or start a second upload, so a kill there still leaves a partial under
+the name; a cancel and a quit still remove it. corner: a kernel without `RENAME_NOREPLACE` (nfs) lands the sibling through
+`noreplace_fallback`: a file by a hard link, which refuses a taken name, and a folder, or a file where links are refused,
+by a checked plain rename, whose window between the check and the rename can replace a name created in it (for a folder,
+only an empty one).
+corner: with hidden files shown, a copy's sibling is listed while it fills, under its own hidden name.
 A `transfercancel` naming a compress or convert id still does nothing, there is no UI cancel for
 either, but a quit or a closed stdin sets each detached flag and drains them under the one 25 s
 shutdown budget, so each compress and convert `Work` cleanup runs before the process exits and

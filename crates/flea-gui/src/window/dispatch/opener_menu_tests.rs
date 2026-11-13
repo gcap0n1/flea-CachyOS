@@ -2,7 +2,7 @@
 use super::opener_tests::{home, launched, looking, quit, shell};
 use super::test_shell::{asked, asked_on, land, land_on, row, set_cursor};
 use super::Order;
-use crate::g2::mn1::join::{Captured, Chosen};
+use crate::g2::context_menus::join::{Captured, Chosen};
 use gpui::{Entity, TestAppContext, VisualTestContext};
 use std::rc::Rc;
 
@@ -85,7 +85,7 @@ fn search_enter_reveal_menu_open_still_opens_the_audio_result(cx: &mut TestAppCo
             row("Music/Album/track.flac", false),
         ],
     );
-    cx.simulate_keystrokes("enter down");
+    cx.simulate_keystrokes("down");
     assert!(menu_open(&shell, cx, 1, &["/files/Music/Album/track.flac"]));
     assert_eq!(launched(), ["/files/Music/Album/track.flac"]);
     quit(&shell, cx);

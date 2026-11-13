@@ -29,6 +29,10 @@
   each pane's loading mark over it in an overlay, inside the content mask the mark's slot recorded, so a narrow pane
   cuts the mark at its own edge. A surface that covers a pane (Quick Look, menus, sheets, dialogs) paints in a later
   layer than that overlay, a GPUI `deferred`, so it is never drawn under a mark.
+- `crates/flea-gui/src/path/chrome.rs` renders the GPUI top chrome and owns its path bar, opened by
+  `:`, `Ctrl+L` or one tap where a tap opens no folder. Under the pointer a copy mark one gap after
+  the path copies the folder as Y does (`crates/flea-gui/src/path/chrome/address.rs`); in the toolbar's
+  keyboard order it sits between Up and Search (`ORDER` in `crates/flea-gui/src/path/chrome.rs`).
 - `thp.rs` the `prctl(PR_SET_THP_DISABLE)` declaration behind `disable()` and `enable()`.
 - `icdexclude.rs` filters known Vulkan drivers for absent hardware before `flea-gui` starts; see rule 5.
 - `icdmanifests.rs` supplies that filter's bounded manifest inventory and driver library classification.
@@ -105,6 +109,8 @@
 - `backend/copyread.rs` the copy source reader: at most four FUSE reads use workers, with Cancel polled every 25 ms while a source read is stalled.
   Local sources read directly, as do FUSE sources when the worker cap is full or a spawn fails.
   A cancel still unlinks the partial destination synchronously, so a destination on a device that stops answering waits for it, as in 0.3.10.
+- `backend/copystage.rs` where a copy's bytes wait until whole: a new folder under one hidden sibling renamed once, a file as an `O_TMPFILE` inode named by `linkat` or, where that is refused, under a hidden sibling.
+- `backend/copysweep.rs` the sweep of dead copies' hidden files and folders before a transfer lands in a folder.
 - `backend/undoshare.rs` the one undo history every backend in the session shares, under
   `$XDG_RUNTIME_DIR/flea/` with an flocked lock file and predictable-path writes; a take is one
   locked read-modify-write, so two windows pressing Ctrl+Z undo two different operations.

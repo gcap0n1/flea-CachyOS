@@ -1,6 +1,47 @@
 //! Keyboard and wire routing for the live filter owner.
 use super::*;
 
+/// The unmodified Enter a waited-on answer or search rows replay once they land.
+pub(crate) fn plain_enter() -> KeyDownEvent {
+    KeyDownEvent {
+        keystroke: gpui::Keystroke {
+            key: "enter".into(),
+            ..Default::default()
+        },
+        is_held: false,
+        prefer_character_input: false,
+    }
+}
+
+// Filtered arrows use the same visual neighbours and end policy as an unfiltered Grid.
+pub(super) fn vertical_step(host: &crate::window::pane::PaneHost, grid: bool, down: bool) -> isize {
+    if !grid {
+        return if down { 1 } else { -1 };
+    }
+    let Some(grid) = host.grid.as_ref() else {
+        return 0;
+    };
+    let shown = host.filter.shown.as_deref().map_or(
+        crate::grid::Shown::All(host.pane.held.total),
+        crate::grid::Shown::Only,
+    );
+    let Some(view) = shown.view_of(host.pane.cursor) else {
+        return 0;
+    };
+    let arrow = if down {
+        crate::grid::Arrow::Down
+    } else {
+        crate::grid::Arrow::Up
+    };
+    crate::grid::arrow(
+        grid.view.layout(shown).columns,
+        Some(view),
+        shown.total(),
+        arrow,
+    )
+    .map_or(0, |next| next as isize - view as isize)
+}
+
 impl Shell {
     /// The query line's keys while it has the caret, and Escape while a filter stands, ahead of search and marks.
     pub(crate) fn filter_key(
@@ -24,7 +65,7 @@ impl Shell {
                 && self.focus.is_focused(window)
                 && self.keyboard.context == flea::keys::Context::Listing
             {
-                return self.filter_reveal_enter(window, cx);
+                return self.filter_enter_held();
             }
             if !(plain && event.keystroke.key == "escape") {
                 return false;
@@ -66,13 +107,11 @@ impl Shell {
             }
             Classified::Key(key) => key,
         };
-        // Enter on the line activates a single exact match; files reveal and folders enter.
-        let single = matches!(key, LineKey::Enter)
-            && owner.entry.borrow().marked.is_none()
-            && owner.asked().is_none()
-            && owner
-                .drawn(host.pane.held.listing)
-                .is_some_and(|drawn| drawn.narrowed.exact.len() == 1);
+        // Enter on the line commits and acts on the highlighted row in the same press; an answer still out acts when it lands.
+        let enter = matches!(key, LineKey::Enter) && owner.entry.borrow().marked.is_none();
+        let waiting = enter
+            .then(|| owner.asked().map(|asked| asked.query.clone()))
+            .flatten();
         let mut consumed = true;
         self.filter_update(
             side,
@@ -83,39 +122,77 @@ impl Shell {
             },
             cx,
         );
-        if single && !self.filter_reveal_enter(window, cx) {
-            self.input_action("open", window, cx);
+        if let Some(query) = waiting {
+            if let Some(host) = self.panes[side].as_mut() {
+                host.filter.enter_after = Some(query);
+            }
+        } else if enter {
+            self.filter_enter_row(event, window, cx);
         }
         consumed
     }
 
-    fn filter_reveal_enter(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let side = self.focus_side;
-        let Some(host) = self.panes[side].as_ref() else {
-            return false;
+    /// The answer an Enter waited on landed: the row it highlights acts as if Enter came now.
+    pub(crate) fn filter_answered(
+        &mut self,
+        side: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(host) = self.panes[side].as_mut() else {
+            return;
         };
-        if host.pane.busy() || host.stopped || host.filter.owner.asked().is_some() {
-            return true;
+        if host.filter.owner.asked().is_some() {
+            return;
         }
-        if !flea::ui_logic_sr2::cursor_shown(host.filter.shown.as_deref(), Some(host.pane.cursor))
-            || !host
-                .pane
-                .held
-                .row(host.pane.cursor)
-                .is_some_and(|row| !flea::ui_logic_pk1::directory(row.dir, row.mode, &row.icon))
+        let Some(query) = host.filter.enter_after.take() else {
+            return;
+        };
+        if side == self.focus_side
+            && host.filter.owner.query() == query
+            && self.enter_replay_open(window, cx)
         {
-            return false;
+            self.filter_enter_row(&plain_enter(), window, cx);
         }
-        self.filter_update(
-            side,
-            |filter, pane| {
-                filter.close(pane);
-                None
-            },
-            cx,
-        );
-        self.recent_reveal(side, window, cx);
-        true
+    }
+
+    /// A waiting Enter acts only while the listing still holds the keyboard; a menu, card or other owner since then drops it.
+    pub(crate) fn enter_replay_open(&self, window: &Window, cx: &Context<Self>) -> bool {
+        !self.input_blocked(cx)
+            && self.focus.is_focused(window)
+            && self.keyboard.context == flea::keys::Context::Listing
+    }
+
+    // The committed line's Enter, run again through the listing so a file opens in its default app and a folder goes in.
+    fn filter_enter_row(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(host) = self.panes[self.focus_side].as_ref() else {
+            return;
+        };
+        let owner = &host.filter.owner;
+        if !owner.up()
+            || owner.typing()
+            || owner.drawn(host.pane.held.listing).is_none()
+            || !flea::ui_logic_listing_filter::cursor_shown(
+                host.filter.shown.as_deref(),
+                Some(host.pane.cursor),
+            )
+            || host.pane.held.row(host.pane.cursor).is_none()
+        {
+            return;
+        }
+        self.key(event, window, cx);
+    }
+
+    /// A standing filter's Enter waits out a listing or an answer in flight; otherwise the listing's Enter opens the row.
+    fn filter_enter_held(&self) -> bool {
+        self.panes[self.focus_side].as_ref().is_some_and(|host| {
+            host.pane.busy() || host.stopped || host.filter.owner.asked().is_some()
+        })
     }
 
     /// A `filtered` line for this pane: the answer in force lands whole, a stale one is dropped, a broken one is a protocol error.

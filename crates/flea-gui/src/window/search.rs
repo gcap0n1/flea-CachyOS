@@ -1,11 +1,11 @@
 //! The production pane owns SR1; its effects join the existing navigation and backend queues.
 use super::startup::View;
 use crate::{
-    g2::sr1::{Host, HostPane, Search, StripKey},
+    g2::file_search::{Host, HostPane, Search, StripKey},
     pane::swap::Options,
     state::Shell,
 };
-use flea::ui_logic_sr1::Kind;
+use flea::ui_logic_file_search::{Kind, Scope};
 use gpui::{Context, KeyDownEvent, Window};
 
 #[path = "search_header.rs"]
@@ -19,17 +19,29 @@ mod keys;
 mod observe;
 pub(crate) use observe::{Draw, QueryReader};
 #[cfg(test)]
+#[path = "search_chrome_tests.rs"]
+mod chrome_tests;
+#[cfg(test)]
 #[path = "search_contents_tests.rs"]
 mod contents_tests;
+#[cfg(test)]
+#[path = "enter_once_tests.rs"]
+mod enter_once_tests;
 #[cfg(test)]
 #[path = "search_grid_tests.rs"]
 mod grid_tests;
 #[cfg(test)]
-#[path = "../g2/sr1/i50_query_host_tests.rs"]
+#[path = "../g2/file_search/i50_query_host_tests.rs"]
 mod i50_query_host_tests;
+#[cfg(test)]
+#[path = "search_keep_tests.rs"]
+mod keep_tests;
 #[cfg(test)]
 #[path = "search_presented_tests.rs"]
 mod presented_tests;
+#[cfg(test)]
+#[path = "search_root_tests.rs"]
+mod root_tests;
 #[cfg(test)]
 #[path = "search_scope_tests.rs"]
 mod scope_tests;
@@ -41,6 +53,11 @@ mod tests;
 mod contents;
 #[path = "search_host.rs"]
 mod host;
+#[path = "search_keep.rs"]
+mod keep;
+#[path = "search_lines.rs"]
+mod lines;
+pub(crate) use keep::Kept;
 #[path = "search_tag.rs"]
 mod tag;
 pub(crate) use host::Runtime;
@@ -83,7 +100,10 @@ impl Shell {
         let was = (host.search.owner.active(), host.search.owner.session.kind);
         change(&mut host.search.owner, &mut pending);
         if let Some(session) = pending.session {
-            host.pane.swap.session = session;
+            if session.drops(host.search.rows_generation) {
+                host.search.kept = None;
+            }
+            host.pane.swap.publish_search(session, pending.pane.count);
         }
         let mut relisted = false;
         let mut send_failed = false;
@@ -175,6 +195,11 @@ impl Shell {
         let Some(host) = self.panes[side].as_mut() else {
             return false;
         };
+        if (host.search.owner.active() || host.pane.state.search)
+            && matches!(action, "filter" | "sortNext" | "sortReverse")
+        {
+            return true;
+        }
         // Ctrl+G opens like f, already in contents; it does nothing until the contents producer is wired.
         let opens = action == "search"
             || (action == "searchContents" && host.search.owner.session.wire.contents);
@@ -197,6 +222,8 @@ impl Shell {
             if host.pane.busy() {
                 return true;
             }
+            // Each fresh open starts here; Home and wider scopes belong to the current search.
+            host.search.owner.session.scope = Scope::Folder;
             // Every view keeps itself: Columns per HIG cols4-hero-search, Grid's tiles per v0.3.12 GridArea.
             host.search.origin = Some(self.view);
             host.search.scroll = host.pane.scroll_y;
@@ -231,20 +258,7 @@ impl Shell {
             return false;
         }
         let key = StripKey::from_event(event);
-        // Enter on a file result uses the same reveal as o; query Enter still commits the line.
-        if !host.search.owner.typing()
-            && matches!(key, StripKey::Enter)
-            && crate::window::input::modifiers(event.keystroke.modifiers) == 0
-            && !host.pane.busy()
-            && !host.search.owner.session.leaving
-            && host
-                .pane
-                .held
-                .row(host.pane.cursor)
-                .is_some_and(|row| !flea::ui_logic_pk1::directory(row.dir, row.mode, &row.icon))
-        {
-            return self.search_action("reveal", window, cx);
-        }
+        // Enter on a result is the listing's: a file opens in its default app and a folder goes in; o reveals.
         if !host.search.owner.typing() && !matches!(key, StripKey::Escape) {
             return false;
         }
@@ -265,6 +279,11 @@ impl Shell {
         let clipboard = matches!(key, StripKey::Paste)
             .then(|| cx.read_from_clipboard().and_then(|item| item.text()))
             .flatten();
+        // Enter on the line commits and acts on the highlighted result in the same press; rows still out act when they land.
+        let enter = host.search.owner.typing()
+            && matches!(key, StripKey::Enter)
+            && crate::window::input::modifiers(event.keystroke.modifiers) == 0
+            && host.search.owner.entry.borrow().marked.is_none();
         self.search_update(
             side,
             clipboard,
@@ -272,100 +291,63 @@ impl Shell {
             window,
             cx,
         );
-        true
-    }
-
-    pub(crate) fn search_line(
-        &mut self,
-        side: usize,
-        line: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let kind = flea::json::field_str(line, "t");
-        if kind.as_deref() == Some("error")
-            && flea::json::field_str(line, "where").as_deref() == Some("searchcontents")
-        {
-            let mut settled = false;
-            self.search_update(
-                side,
-                None,
-                |search, host| settled = search.contents_failed(line, host),
-                window,
-                cx,
-            );
-            if settled {
-                let message = flea::json::field_str(line, "msg").unwrap_or_default();
-                self.status_refused("searchcontents", &message, "", cx);
-            }
-            return true;
-        }
-        if !matches!(
-            kind.as_deref(),
-            Some("searchopened" | "searchclosed" | "searched" | "searching" | "contentsmatches")
-        ) {
-            return false;
-        }
-        let mut error = None;
-        self.search_update(
-            side,
-            None,
-            |search, host| {
-                if let Err(message) = search.line(line, host) {
-                    error = Some(message);
-                }
-            },
-            window,
-            cx,
-        );
-        if let (Some(message), Some(host)) = (error, self.panes[side].as_mut()) {
-            host.record_error(
-                crate::backend::Failure {
-                    key: "window.backend_protocol",
-                    detail: message,
-                },
-                &self.locale,
-            );
+        if enter {
+            self.search_enter_row(side, event, window, cx);
         }
         true
     }
 
-    pub(crate) fn search_landed(
+    /// The newest generation's rows landed: an Enter that came before them acts on the highlighted result now.
+    pub(crate) fn search_rows_landed(
         &mut self,
         side: usize,
-        failed: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(host) = &self.panes[side] else {
+        let Some(host) = self.panes[side].as_mut() else {
             return;
         };
-        if !host.search.owner.active() {
+        let Some(generation) = host.search.enter_after else {
             return;
+        };
+        if host
+            .search_scene()
+            .is_some_and(|(drawn, _)| drawn == generation)
+        {
+            host.search.enter_after = None;
+            if side == self.focus_side && self.enter_replay_open(window, cx) {
+                self.search_enter_row(side, &crate::window::filter::plain_enter(), window, cx);
+            }
         }
-        let failed = failed
-            || matches!(
-                host.pane.state.kind,
-                crate::pane::states::Kind::Error | crate::pane::states::Kind::Locked
-            );
-        if !failed
-            && (!host.search.owner.session.leaving || host.pane.busy() || host.pane.state.search)
+    }
+
+    // The committed line's Enter, run again through the listing so a file opens in its default app and a folder goes in.
+    fn search_enter_row(
+        &mut self,
+        side: usize,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(host) = self.panes[side].as_mut() else {
+            return;
+        };
+        let owner = &host.search.owner;
+        if !owner.active()
+            || owner.typing()
+            || owner.session.leaving
+            || owner.session.query.is_empty()
         {
             return;
         }
-        self.search_update(
-            side,
-            None,
-            |search, host| {
-                if failed {
-                    search.leave(host);
-                    search.listing_failed(host);
-                }
-                search.landed(host);
-            },
-            window,
-            cx,
-        );
+        if host.search_scene().is_none() {
+            host.search.enter_after = Some(owner.session.stamps.gen);
+            return;
+        }
+        if host.pane.held.row(host.pane.cursor).is_none() {
+            return;
+        }
+        self.key(event, window, cx);
     }
 
     pub(crate) fn search_leave(
@@ -381,15 +363,5 @@ impl Shell {
             return;
         }
         self.search_update(side, None, |search, host| search.leave(host), window, cx);
-    }
-
-    pub(crate) fn sync_search_text(&mut self) {
-        for host in self.panes.iter_mut().flatten() {
-            if host.search.owner.session.live() {
-                let (status, _) = Search::status(&host.search.owner, &self.locale.catalog);
-                host.state_text.message = status.clone();
-                host.status = status.into();
-            }
-        }
     }
 }

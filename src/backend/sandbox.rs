@@ -1,3 +1,4 @@
+use flea::bytename::ExactText as _;
 use std::path::Path;
 
 // bwrap costs a few ms over a bare exec here and systemd-run costs 23.8 ms; see AGENTS.md "Thumbnail sandbox".
@@ -110,15 +111,24 @@ pub(crate) fn wrap_with(
         a.push(flag.to_string());
     }
     a.push("--ro-bind".to_string());
-    a.push(input.to_string_lossy().to_string());
-    a.push(input.to_string_lossy().to_string());
+    a.push(input.exact_text().to_string());
+    a.push(input.exact_text().to_string());
     // The caller names the one writable path, and production binds the single pre-created temp file; see AGENTS.md "Thumbnail sandbox".
     a.push("--bind".to_string());
-    a.push(out.to_string_lossy().to_string());
-    a.push(out.to_string_lossy().to_string());
+    a.push(out.exact_text().to_string());
+    a.push(out.exact_text().to_string());
     a.extend_from_slice(inner);
     a
 }
+
+// The office jail: no CPU cap (LibreOffice's threads outspend 30 CPU seconds inside the 60 s wall clock) and the system font cache read-only, so no conversion rescans the fonts.
+pub(crate) fn wrap_office(inner: &[String], input: &Path, out: &Path) -> Vec<String> {
+    let mut a = wrap_with(inner, input, out, None, OFFICE_ADDRESS_SPACE_BYTES);
+    let at = a.len() - inner.len();
+    a.splice(at..at, ["--ro-bind-try", FONT_CACHE, FONT_CACHE].map(String::from));
+    a
+}
+const FONT_CACHE: &str = "/var/cache/fontconfig";
 
 // The pool's namespace flags around the long-lived thumbnail worker, which gets each job's files as descriptors and binds only its own executable; no prlimit, because the limits are per job and a CPU cap would also accumulate the worker's own time across the session.
 pub fn wrap_worker(inner: &[String], exe: &Path) -> Vec<String> {
@@ -129,8 +139,8 @@ pub fn wrap_worker(inner: &[String], exe: &Path) -> Vec<String> {
         a.push(flag.to_string());
     }
     a.push("--ro-bind".to_string());
-    a.push(exe.to_string_lossy().to_string());
-    a.push(exe.to_string_lossy().to_string());
+    a.push(exe.exact_text().to_string());
+    a.push(exe.exact_text().to_string());
     a.extend_from_slice(inner);
     a
 }
@@ -164,13 +174,13 @@ fn wrap_extra(inner: &[String], ro_binds: &[&Path], writable: Option<&Path>) -> 
     }
     for bind in ro_binds {
         a.push("--ro-bind".to_string());
-        a.push(bind.to_string_lossy().to_string());
-        a.push(bind.to_string_lossy().to_string());
+        a.push(bind.exact_text().to_string());
+        a.push(bind.exact_text().to_string());
     }
     if let Some(dir) = writable {
         a.push("--bind".to_string());
-        a.push(dir.to_string_lossy().to_string());
-        a.push(dir.to_string_lossy().to_string());
+        a.push(dir.exact_text().to_string());
+        a.push(dir.exact_text().to_string());
     }
     a.extend_from_slice(inner);
     a

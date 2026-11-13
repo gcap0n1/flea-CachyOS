@@ -12,7 +12,7 @@ use crate::{
         rows::{centre_of, rect_of, round},
         Adapter,
     },
-    list::{columns::Column, pane::ROW_HEIGHT},
+    list::columns::Column,
 };
 use flea::ipc::wire::Reply;
 
@@ -165,7 +165,7 @@ impl Reader<'_> {
             let height = f32::from(line.ascent + line.descent);
             Some((
                 x + cells.name_x,
-                y + (ROW_HEIGHT - height) / 2.,
+                y + (drawn.band - height) / 2.,
                 (cells.name_right - cells.name_x).max(0.),
                 height,
                 f32::from(line.width),
@@ -276,6 +276,9 @@ impl Adapter for Reader<'_> {
                 .map_or(0, |columns| columns.area.tracks_built())
                 .to_string(),
             "columnActiveRect" => self.rect(Slot::Active),
+            "columnTrackRect" => crate::ipc::columns::slot_named(text)
+                .map(|slot| self.rect(slot))
+                .unwrap_or_default(),
             "columnNames" => self.names(text),
             "columnPeekNames" => self
                 .host

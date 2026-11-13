@@ -47,6 +47,9 @@ fn mounted<'a>(
         window.focus(&shell.focus, cx);
         shell
     });
+    // The focused pane draws the accent only in the active window; a TestWindow starts inactive.
+    cx.update(|window, _| window.activate_window());
+    cx.run_until_parked();
     cx.update(|_, cx| cx.set_reduce_motion(true));
     cx.simulate_resize(size(px(1100.), px(600.)));
     cx.run_until_parked();
@@ -198,6 +201,8 @@ fn fixlist_ey117_list_hover_follows_the_rows_a_wheel_brings_under_the_pointer(
     cx: &mut TestAppContext,
 ) {
     let (shell, cx) = mounted(cx, SUNSET, false);
+    // The wash under test is Settings > View > Highlight on hover ticked; unticked it never draws.
+    cx.update(|_, cx| cx.set_global(crate::list::hover_wash::HoverWash(true)));
     draw(cx);
     let frame = shell.read_with(cx, |shell, _| {
         shell.panes[0].as_ref().unwrap().input.frame.unwrap()

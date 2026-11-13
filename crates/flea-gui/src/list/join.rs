@@ -80,8 +80,9 @@ impl Shell {
         RowStates {
             drop_target: cue.as_ref().map(|cue| cue.0),
             drop_label: cue.map(|cue| cue.1),
-            // v0.3.12 Row.qml reads only the current pane, so a showing Jobs card keeps the focused look (EY-522).
-            focused: side == self.focus_side
+            // v0.3.12 Row.qml reads the current pane's listArea.activeFocus: a showing Jobs card keeps it (EY-522), a deactivated window loses it.
+            focused: window.is_window_active()
+                && side == self.focus_side
                 && self.focus.is_focused(window)
                 && !self.wheel_blocked(cx),
             other_pane: self.view == View::Dual && side != self.focus_side,
@@ -92,7 +93,15 @@ impl Shell {
                     && host.input.band.is_none()
                     && !cx.has_active_drag()
                     && !self.input_blocked(cx)
+                    // PaneRail.qml: a revealed overlay rail holds the pointer, so the rows left of its edge light nothing.
+                    && !self.rail.as_ref().is_some_and(|join| {
+                        join.host
+                            .read(cx)
+                            .cover()
+                            .is_some_and(|cover| window.mouse_position().x < cover.right())
+                    })
             }),
+            hover_wash: crate::list::hover_wash::HoverWash::on(cx),
             renaming: self.renaming_row(side),
             grow: self.grows[side],
             ..self
@@ -296,7 +305,11 @@ impl Shell {
         if self.view != View::List {
             let text = self.locale.catalog.tr("feedback.autofit.list_required");
             self.status_messages(cx, |messages, now| {
-                messages.explain(&text, flea::ui_logic_fb1::status::Hint::None, now);
+                messages.explain(
+                    &text,
+                    flea::ui_logic_status_feedback::status::Hint::None,
+                    now,
+                );
             });
             return;
         }

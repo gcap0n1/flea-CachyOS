@@ -23,6 +23,10 @@ pub const DEFAULTS: &str = r#"{
   "hiddenLast": false,
   "showGitStatus": false,
   "highlightToday": false,
+  "highlightHover": false,
+  "tabsAsIcons": false,
+  "emptyFolderOmi": true,
+  "emptyFolderRotate": true,
   "wrapAtEnds": false,
   "escapeUp": false,
   "openMode": "double",
@@ -40,7 +44,7 @@ pub const DEFAULTS: &str = r#"{
     "favourites": [],
     "showHome": true, "showRecent": false, "showNetwork": true,
     "showDevices": true, "showTrash": true,
-    "driveSize": false, "trashCount": false, "showUnmounted": true, "showTags": false, "rail": "shown", "autoHide": false, "sidebarWidth": 192
+    "driveSize": false, "trashCount": false, "showUnmounted": true, "nearbyHosts": false, "showTags": false, "rail": "shown", "autoHide": false, "sidebarWidth": 192
   },
   "shelf": {
     "enabled": false, "bar": true, "rail": "off",
@@ -56,10 +60,12 @@ pub const DEFAULTS: &str = r#"{
   "keys": "default",
   "display": { "textSize": { "mode": "system" }, "hyprlandIcons": false },
   "menu": { "hidden": ["delete", "openTerminal", "placeMenu", "runScript",
-            "moveto", "copyto", "properties", "permissions", "copyAs", "pasteAs",
-            "invertSelection", "extThumbs", "run", "openAsText", "openAgent"] },
+            "moveto", "copyto", "copyAs", "pasteAs",
+            "invertSelection", "extThumbs", "run", "openAsText", "openAgent",
+            "toggleHidden", "toggleLangMarks"] },
   "updates": { "autoCheck": true },
   "plugins": {},
+  "menuVersion": 1,
   "stateVersion": 4
 }"#;
 
@@ -104,8 +110,9 @@ pub enum Rule {
     Group(&'static [(&'static str, Rule)]),
 }
 
-// The top-level key that records which of src/uimigrate.rs's one-time changes a file has had.
+// The top-level keys that record which of src/uimigrate.rs's one-time changes a file has had.
 pub const STATE_VERSION: &str = "stateVersion";
+pub const MENU_VERSION: &str = "menuVersion";
 
 pub const COLUMN_KEYS: &[&str] = &["name", "mode", "size", "date", "kind"];
 
@@ -136,6 +143,8 @@ pub const PLACES: &[(&str, Rule)] = &[
     ("driveSize", Rule::Bool),
     ("trashCount", Rule::Bool),
     ("showUnmounted", Rule::Bool),
+    // 0.4.1: off, so the NETWORK plus opens Add a Network Share as 0.4.0 does.
+    ("nearbyHosts", Rule::Bool),
     ("showTags", Rule::Bool),
     ("rail", Rule::Word(&["shown", "hidden"])),
     ("autoHide", Rule::Bool),
@@ -209,6 +218,11 @@ pub const SCHEMA: &[(&str, Rule)] = &[
     ("hiddenLast", Rule::Bool),
     ("showGitStatus", Rule::Bool),
     ("highlightToday", Rule::Bool),
+    ("highlightHover", Rule::Bool),
+    // Settings > View's tab marks and the empty folder's two rows; off, on and on draw 0.4.1's window.
+    ("tabsAsIcons", Rule::Bool),
+    ("emptyFolderOmi", Rule::Bool),
+    ("emptyFolderRotate", Rule::Bool),
     ("wrapAtEnds", Rule::Bool),
     // ClickAndRefresh: Escape climbs when on, the pointer's open mode, and the
     // slow-click rename it greys. Single click and Escape-up ship off, slow click ships on.
@@ -244,6 +258,8 @@ pub const SCHEMA: &[(&str, Rule)] = &[
     ("menu", Rule::Group(MENU)),
     ("updates", Rule::Group(UPDATES)),
     ("plugins", Rule::Plugins),
+    // Not a setting: 0.4.1's menu stamp, apart from stateVersion because 0.4.0 refuses a stateVersion above 4.
+    (MENU_VERSION, Rule::Version),
     // Not a setting: the stamp that makes each migration once, for the window, the TUI and the CLI alike.
     (STATE_VERSION, Rule::Version),
 ];
@@ -305,6 +321,10 @@ mod tests {
                 "hiddenLast",
                 "showGitStatus",
                 "highlightToday",
+                "highlightHover",
+                "tabsAsIcons",
+                "emptyFolderOmi",
+                "emptyFolderRotate",
                 "wrapAtEnds",
                 "escapeUp",
                 "openMode",
@@ -315,10 +335,11 @@ mod tests {
                 "startFolder",
                 "lastPath", "lastTabs", "newTab", "trashAutoEmpty", "trashSweptOn", "places", "shelf",
                 "preview", "previewFacts", "keys",
-                "display", "menu", "updates", "plugins", "stateVersion"
+                "display", "menu", "updates", "plugins", "menuVersion", "stateVersion"
             ]
         );
         assert_eq!(d.get(STATE_VERSION).and_then(Json::as_f64), Some(4.0), "a fresh document is already stamped");
+        assert_eq!(d.get(MENU_VERSION).and_then(Json::as_f64), Some(1.0), "and carries the menu stamp beside it");
         assert_eq!(d.get("view").and_then(Json::as_str), Some("list"));
         assert_eq!(d.get("pickerView").and_then(Json::as_str), Some("list"));
         assert_eq!(d.get("density").and_then(Json::as_str), Some("compact"));
@@ -331,6 +352,13 @@ mod tests {
         assert_eq!(d.get("langMarks").and_then(Json::as_bool), Some(true));
         assert_eq!(d.get("showGitStatus").and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("highlightToday").and_then(Json::as_bool), Some(false));
+        assert_eq!(d.get("highlightHover").and_then(Json::as_bool), Some(false));
+        assert_eq!(d.get("tabsAsIcons").and_then(Json::as_bool), Some(false));
+        assert_eq!(d.get("emptyFolderOmi").and_then(Json::as_bool), Some(true));
+        assert_eq!(
+            d.get("emptyFolderRotate").and_then(Json::as_bool),
+            Some(true)
+        );
         assert_eq!(d.get("wrapAtEnds").and_then(Json::as_bool), Some(false));
         // Escape stays put and a double click opens as in 0.3.4; slow click renames, on by the defaults ledger.
         assert_eq!(d.get("escapeUp").and_then(Json::as_bool), Some(false));
@@ -415,8 +443,8 @@ mod tests {
             .collect();
         assert_eq!(
             hidden,
-            // HIG CHANGES keeps Actions on while Run Script and Open in Agent remain off.
-            ["delete", "openTerminal", "placeMenu", "runScript", "moveto", "copyto", "properties", "permissions", "copyAs", "pasteAs", "invertSelection", "extThumbs", "run", "openAsText", "openAgent"]
+            // HIG CHANGES keeps Actions on while Run Script and Open in Agent remain off; Properties and Permissions ship shown and the view rows leave the file menu.
+            ["delete", "openTerminal", "placeMenu", "runScript", "moveto", "copyto", "copyAs", "pasteAs", "invertSelection", "extThumbs", "run", "openAsText", "openAgent", "toggleHidden", "toggleLangMarks"]
         );
     }
 

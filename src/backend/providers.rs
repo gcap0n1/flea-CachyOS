@@ -1,5 +1,6 @@
 // Menu capability discovery reads metadata only; provider status runs on explicit UI entry.
 use crate::json::escape;
+use flea::bytename::ExactText as _;
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -10,15 +11,28 @@ fn command(name: &str, paths: &[PathBuf]) -> (bool, String, String) {
     for directory in paths {
         let path = directory.join(name);
         match path.metadata() {
-            Ok(meta) if meta.is_file() && meta.permissions().mode() & 0o111 != 0 =>
-                return (true, path.to_string_lossy().into_owned(), String::new()),
+            Ok(meta) if meta.is_file() && meta.permissions().mode() & 0o111 != 0 => {
+                return (true, path.exact_text().into_owned(), String::new())
+            }
             Ok(_) => unavailable = Some(format!("{} is not executable.", path.display())),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound || error.raw_os_error() == Some(ENOTDIR) => {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::NotFound
+                    || error.raw_os_error() == Some(ENOTDIR) =>
+            {
                 if path.symlink_metadata().is_ok() {
-                    unavailable = Some(format!("{} is a link to an item that is gone.", path.display()));
+                    unavailable = Some(format!(
+                        "{} is a link to an item that is gone.",
+                        path.display()
+                    ));
                 }
             }
-            Err(error) => unavailable = Some(format!("Could not inspect {}: {}.", path.display(), crate::error::io_message(&error))),
+            Err(error) => {
+                unavailable = Some(format!(
+                    "Could not inspect {}: {}.",
+                    path.display(),
+                    crate::error::io_message(&error)
+                ))
+            }
         }
     }
     match unavailable {
@@ -69,11 +83,11 @@ pub(crate) fn facts() -> String {
     let paths: Vec<PathBuf> = std::env::var_os("PATH").map(|value| std::env::split_paths(&value).collect()).unwrap_or_default();
     let info = account_info(std::env::var_os("HOME"));
     let (text, error) = match info { Ok(text) => (text, String::new()), Err(error) => (String::new(), error) };
-    format!(r#"{{"taildrop":{},"taildropSend":{},"localsend":{},"rclone":{},"dropbox":{},"dropboxInfo":"{}","dropboxError":"{}"}}"#,
+    format!(r#"{{"taildrop":{},"taildropSend":{},"localsend":{},"rclone":{},"dropbox":{},"owly":{},"dropboxInfo":"{}","dropboxError":"{}"}}"#,
         command_json("tailscale", &paths), command_json("omarchy-tailscale-send", &paths),
         command_json_any(&["localsend-cli"], &paths),
         command_json("rclone", &paths),
-        command_json("dropbox-cli", &paths), escape(&text), escape(&error))
+        command_json("dropbox-cli", &paths), command_json("owly", &paths), escape(&text), escape(&error))
 }
 
 #[cfg(test)]
