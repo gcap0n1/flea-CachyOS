@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # When thisisgm/flea tags a vX.Y.Z that cachyos lacks, try the merge on a sync/<tag> branch, build,
-# test and check our Commons, then open a pull request with the results. A conflict opens an issue
-# instead. Nothing reaches cachyos without a person merging the pull request; see
-# docs/cachyos/sync-upstream.md.
+# test and check our Commons, then open a pull request with the results. When every check is green the
+# workflow merges the pull request itself and starts the package build; anything else (a failure, a new
+# Omarchy path, a change to upstream's runtime depends) waits for a person. A conflict opens an issue
+# instead. See docs/cachyos/sync-upstream.md.
 name: Upstream release sync
 
 on:
@@ -19,6 +20,8 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  # A push made with the workflow token starts no other workflow, so the package build is dispatched.
+  actions: write
 
 jobs:
   sync:
@@ -80,6 +83,25 @@ jobs:
           # A failing build or test is a result for the report, not a reason to stop: GitHub runs bash -e.
           set +e
           report="$RUNNER_TEMP/report.md"
+          tag='${{ steps.find.outputs.tag }}'
+          # Any reason to hold the merge for a person lands in hold.md; an empty file means merge by itself.
+          hold="$RUNNER_TEMP/hold.md"
+          : > "$hold"
+          prev=$(git tag --merged "$BASE" --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          # New Omarchy paths or commands need a CachyOS answer (docs/cachyos/sync-upstream.md, step 3).
+          omarchy=$(git diff "$prev" "$tag" -- crates src Makefile | grep -E '^\+' \
+            | grep -E 'omarchy/current/theme|omarchy/language|/usr/share/omarchy|"omarchy-' \
+            | grep -v '^+++' | head -n 20)
+          if [ -n "$omarchy" ]; then
+            echo "- New Omarchy paths or commands since $prev:" >> "$hold"
+            { echo '```'; echo "$omarchy"; echo '```'; } >> "$hold"
+          fi
+          # Runtime depends live in packaging/flea-cachyos/PKGBUILD and must follow upstream's by hand.
+          if ! diff <(git show "$prev:PKGBUILD" | sed -n '/^depends=(/,/^)/p') \
+                    <(git show "$tag:PKGBUILD" | sed -n '/^depends=(/,/^)/p') > "$RUNNER_TEMP/depends.diff"; then
+            echo "- Upstream's runtime depends changed since $prev:" >> "$hold"
+            { echo '```diff'; cat "$RUNNER_TEMP/depends.diff"; echo '```'; } >> "$hold"
+          fi
           # Since 0.4.0 flea-gui links fontconfig, wayland, xkbcommon and Vulkan: upstream's script installs them.
           if [ -x packaging/flea-release-build ] && ! packaging/flea-release-build install-deps > "$RUNNER_TEMP/deps.log" 2>&1; then
             echo "- Build dependencies: **not all installed**, see the run log" >> "$report"
@@ -88,6 +110,7 @@ jobs:
           if cargo build --release --locked --workspace --bins > "$RUNNER_TEMP/build.log" 2>&1; then
             echo "- Build: passed" >> "$report"
           else
+            echo "- Build failed" >> "$hold"
             echo "- Build: **failed**, last lines below" >> "$report"
             { echo '```'; tail -n 25 "$RUNNER_TEMP/build.log"; echo '```'; } >> "$report"
           fi
@@ -97,15 +120,26 @@ jobs:
             echo "  Failed on the runner (some tests need a desktop session or tools a CI machine lacks):" >> "$report"
             grep -E '^test .* FAILED$' "$RUNNER_TEMP/test.log" | sed 's/^test /  - /; s/ \.\.\. FAILED$//' | head -n 30 >> "$report"
           fi
+          # Known runner-only failures (docs/cachyos/sync-upstream.md) do not hold the merge; any other does,
+          # and so does a test binary that never printed a result.
+          unknown=$(grep -E '^test .* FAILED$' "$RUNNER_TEMP/test.log" \
+            | grep -v 'backend::flashpipe::tests::a_zip_member_named_with_brackets_streams_itself' | head -n 1)
+          if [ -n "$unknown" ] || ! grep -qE '^test result:' "$RUNNER_TEMP/test.log" \
+             || grep -qE '^error(\[|:)' "$RUNNER_TEMP/test.log"; then
+            echo "- Rust tests failed or did not run" >> "$hold"
+          fi
           if scripts/check-commons > "$RUNNER_TEMP/commons.log" 2>&1; then
             echo "- Commons: nothing missing ($(tail -n 1 "$RUNNER_TEMP/commons.log"))" >> "$report"
           else
+            echo "- Commons members missing" >> "$hold"
             echo "- Commons: **members missing**, add them to ui/Commons before merging" >> "$report"
             { echo '```'; cat "$RUNNER_TEMP/commons.log"; echo '```'; } >> "$report"
           fi
           cat "$report"
+          if [ -s "$hold" ]; then echo "auto=no" >> "$GITHUB_OUTPUT"; else echo "auto=yes" >> "$GITHUB_OUTPUT"; fi
 
       - name: Open the pull request
+        id: pr
         if: steps.merge.outputs.clean == 'yes'
         run: |
           set -euo pipefail
@@ -117,18 +151,58 @@ jobs:
               -f body="The merge of \`$tag\` was clean, but the workflow could not push sync/$tag: $why. Merge it by hand (docs/cachyos/sync-upstream.md)." --jq '.html_url'
             exit 0
           fi
-          body="Upstream published \`$tag\`. This branch merges it into \`$BASE\`; nothing is merged until a person approves.
+          if [ '${{ steps.checks.outputs.auto }}' = yes ]; then
+            verdict="Every check passed, so the workflow merges this into \`$BASE\` itself and starts the package build."
+          else
+            verdict="**Held for a person:**
+
+          $(cat "$RUNNER_TEMP/hold.md")
+
+          Before merging: read https://github.com/thisisgm/flea/blob/$tag/CHANGELOG.md for Omarchy commands or paths, compare upstream's PKGBUILD with ours, and run ./tests/js.sh and a real launch locally (docs/cachyos/sync-upstream.md)."
+          fi
+          body="Upstream published \`$tag\`. This branch merges it into \`$BASE\`.
 
           $(cat "$RUNNER_TEMP/report.md")
 
-          Before merging: read https://github.com/thisisgm/flea/blob/$tag/CHANGELOG.md for Omarchy commands or paths, compare upstream's packaging/flea/PKGBUILD with ours, and run ./tests/js.sh and a real launch locally (docs/cachyos/sync-upstream.md)."
-          if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" -f title="Merge upstream $tag into cachyos" -f head="sync/$tag" -f base="$BASE" -f body="$body" --jq '.html_url'; then
+          $verdict"
+          if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" -f title="Merge upstream $tag into cachyos" -f head="sync/$tag" -f base="$BASE" -f body="$body" --jq '.html_url' > "$RUNNER_TEMP/pr.txt"; then
             # Settings > Actions > "Allow GitHub Actions to create and approve pull requests" is off.
             gh api --method POST "repos/${GITHUB_REPOSITORY}/issues" -f title="Merge upstream $tag into cachyos: pull request not opened" \
               -f body="sync/$tag is pushed and ready: https://github.com/${GITHUB_REPOSITORY}/compare/$BASE...sync/$tag
 
           $body" --jq '.html_url'
+            exit 0
           fi
+          cat "$RUNNER_TEMP/pr.txt"
+          echo "opened=yes" >> "$GITHUB_OUTPUT"
+
+      - name: Merge by itself and build the package
+        # Only on the real branch: a test run against another base never publishes.
+        if: steps.pr.outputs.opened == 'yes' && steps.checks.outputs.auto == 'yes' && env.BASE == 'cachyos'
+        run: |
+          set -euo pipefail
+          tag='${{ steps.find.outputs.tag }}'
+          # A fast-forward of cachyos onto the tested merge; GitHub marks the pull request merged. If cachyos
+          # moved meanwhile the push is refused and the pull request waits for a person.
+          if ! git push origin "sync/$tag:$BASE"; then
+            gh pr comment "sync/$tag" --body "Not merged by itself: \`$BASE\` moved while the checks ran. Merge it by hand."
+            exit 0
+          fi
+          # GitHub marks the pull request merged a moment after the push; deleting the branch first would
+          # leave it closed instead.
+          for _ in $(seq 12); do
+            [ "$(gh pr view "sync/$tag" --json state --jq .state)" = MERGED ] && { git push origin --delete "sync/$tag" || true; break; }
+            sleep 5
+          done
+          # The workflow token's push starts no workflow, so ask for the package build explicitly.
+          gh workflow run package.yml --ref "$BASE"
+          # Older sync pull requests and conflict issues are covered by this release.
+          for n in $(gh pr list --state open --json number,headRefName --jq '.[] | select(.headRefName | startswith("sync/")) | .number'); do
+            gh pr close "$n" --delete-branch --comment "Superseded: $tag is merged into $BASE." || true
+          done
+          for n in $(gh issue list --state open --json number,title --jq '.[] | select(.title | test("^Merge upstream v[0-9.]+ into cachyos")) | .number'); do
+            gh issue close "$n" --comment "Superseded: $tag is merged into $BASE." || true
+          done
 
       - name: Report a conflict
         if: steps.merge.outputs.clean == 'no'
