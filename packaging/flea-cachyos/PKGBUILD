@@ -63,7 +63,7 @@ package() {
   ln -s ../Ui "$pkgdir/usr/share/flea/ui/boot/Ui"
 
   # Omarchy's language roster and English shell strings, which src/i18n/mod.rs reads here without Omarchy.
-  install -Dm644 src/i18n/fixtures/locales.json -t "$pkgdir/usr/share/flea/omarchy/default/i18n"
+  install -Dm644 src/i18n/fixtures/locales.json src/i18n/fixtures/plural.jq -t "$pkgdir/usr/share/flea/omarchy/default/i18n"
   install -Dm644 src/i18n/fixtures/omarchy/default/i18n/en/*.json -t "$pkgdir/usr/share/flea/omarchy/default/i18n/en"
 
   # Licences under this package's name, and the fork's own hook, setup and Noctalia template.
